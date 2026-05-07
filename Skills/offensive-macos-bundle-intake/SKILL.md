@@ -25,15 +25,15 @@ trigger_phrases:
 ## When To Use
 
 - The operator gives a path such as `/Applications/<App>.app`, `targets/<App>.app`, a `.pkg`, `.framework`, `.xpc`, helper tool, or bare Mach-O binary.
-- A new pass needs initial target state before selecting a family playbook.
-- `CORPUS.md` needs agent-maintained target inventory, surface labels, family routing, and worklist entries.
+- A new pass needs initial target state before selecting a family playbook or recipe.
+- `CORPUS.md` needs agent-maintained target inventory, surface labels, family routing, Scryer decision support, Ledger anchors, and worklist entries.
 
 ## Lab Topology — Where To Run This
 
 | Step | Surface | How |
 |------|---------|-----|
 | Target intake | workstation/project clone | `python3 scripts/start-target.py "<target-path>" --pass-id <PASS-ID>` |
-| Durable state | project clone | `CORPUS.md`, `INDEX.md`, `METRICS.md`, `HANDOFF.md`, `findings/analysis/` |
+| Durable state | project clone | `CORPUS.md`, `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, `INDEX.md`, `METRICS.md`, `HANDOFF.md`, `findings/analysis/` |
 | Static RE | lab host via Cursor | `ghidra-mcp` against the recorded `Lab Host Path Mapping` |
 | Metadata/dynamic prep | lab host via Cursor | `macre-vm-mcp`, only after `LAB_SAFETY.md` allows the test shape |
 | Manual confirmation | human operator | approve state-changing commands and dynamic tests before they run |
@@ -51,10 +51,10 @@ trigger_phrases:
 
 5. If the target is already under `targets/` or the script cannot run, emulate the same work manually:
    - identify bundle metadata, main executable, helpers, XPC services, launchd plists, updater components, entitlements, code-signing flags, and privacy strings;
-   - write a target map under `findings/analysis/`;
-   - update `CORPUS.md` target inventory, discovered components, surface classification, family labels, and worklist sections.
+   - write a target map and dossier under `findings/analysis/`;
+   - update `CORPUS.md` target inventory, discovered components, surface classification, Scryer decision support, family labels, Ledger anchors, and worklist sections.
 6. Classify from inventory first. Assign one or more family labels, or `unknown/mixed` when the surfaces do not clearly match a built-in family.
-7. Propose the first static sweep and the expected evidence. Do not run dynamic tests until `LAB_SAFETY.md` identifies the host, user, snapshot/rollback, and allowed test shape.
+7. Use Scryer recommendations and `docs/playbooks/investigation-recipes.md` to propose the first static sweep and expected evidence. Do not run dynamic tests until `LAB_SAFETY.md` identifies the host, user, snapshot/rollback, and allowed test shape.
 8. When Ghidra or dynamic tooling needs the lab-host copy, sync and record the mapping:
 
    ```bash
@@ -73,6 +73,9 @@ trigger_phrases:
 - Target ID:
 - Local target path:
 - Target map:
+- Dossier:
+- Scryer recommendation:
+- Ledger anchor:
 - Family labels:
 - Primary surfaces:
 - Recommended first sweep:

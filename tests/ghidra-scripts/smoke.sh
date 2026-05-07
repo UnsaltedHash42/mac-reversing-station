@@ -23,6 +23,7 @@ expected_headers = {
     "scan_privileged_helper_surface.py": "target\thelpers\tlaunchd_refs\tauthz_refs\tinstall_refs\tprivileged_ops\tconfidence\tevidence",
     "scan_tcc_prompt_surface.py": "target\ttcc_refs\tprompt_refs\tbundle_identity_refs\tapple_event_refs\tprivacy_services\tconfidence\tevidence",
     "scan_persistent_authorization.py": "target\tbookmark_refs\tkeychain_refs\tcontainer_store_refs\tsandbox_refs\tfile_access_refs\tconfidence\tevidence",
+    "export_lldb_anchors.py": "target\tfunctions\tentry_points\tevidence",
 }
 
 errors: list[str] = []

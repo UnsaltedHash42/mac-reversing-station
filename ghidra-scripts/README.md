@@ -42,6 +42,10 @@ The scripts intentionally bias toward stable triage signals over proof. A positi
   - TSV: `target	bookmark_refs	keychain_refs	container_store_refs	sandbox_refs	file_access_refs	confidence	evidence`
   - Looks for security-scoped bookmarks, keychain, container persistence, sandbox extension, and file-access strings.
 
+- `export_lldb_anchors.py`
+  - TSV: `target	functions	entry_points	evidence`
+  - Exports capped function entry anchors for Bridge workflows that need LLDB confirmation.
+
 ## Invocation Pattern
 
 From an MCP-capable agent:

@@ -2,7 +2,7 @@
 
 This repository is a Cursor-driven macOS reverse-engineering station. Clone it when you want to start a new authorized reversing or vulnerability-research project, then let Cursor, Ghidra, and your lab Mac work together from one project folder.
 
-The goal is not to replace the human reverser. The goal is to make the human faster: Cursor keeps the notebook, drives repeatable Ghidra and lab commands, proposes next hypotheses, and updates the project record while you decide what matters.
+The goal is not to replace the human reverser. The goal is to make the human faster: the workbench performs repeatable static analysis, turns results into decision support, drives Ghidra and lab commands, proposes next hypotheses, and updates the project record while you decide what matters.
 
 ## Operating Model
 
@@ -21,8 +21,16 @@ Your lab host can be named anything. In this repo, examples use `<lab-host>` and
 - `docs/playbooks/` gives starting workflows for privileged helpers/updaters, enterprise agents, developer tools, and TCC-heavy apps.
 - `ghidra-scripts/` contains read-only Ghidra postScripts that produce TSV triage output.
 - `macre-vm-mcp/` contains VM-side dynamic tooling for LLDB, DTrace, codesign, launchd, logs, and system checks.
-- `templates/findings-repo/` contains local project files such as `LAB_SAFETY.md`, `CORPUS.md`, `INDEX.md`, `METRICS.md`, and `REPORTING.md`.
+- `templates/findings-repo/` contains local project files such as `LAB_SAFETY.md`, `CORPUS.md`, `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, `INDEX.md`, `METRICS.md`, and `REPORTING.md`.
 - `scripts/` contains setup, sync, and smoke-test helpers.
+
+## Workbench Vocabulary
+
+- **Workbench** is the whole project environment: Cursor, project clone, lab host, skills, scripts, and durable project state.
+- **Scryer** is the static-analysis decision layer. It reads intake and first-pass facts, writes a dossier, names coverage gaps, and recommends recipes or Ghidra sweeps.
+- **Grimoire** is the investigation recipe registry in `docs/playbooks/investigation-recipes.md`.
+- **Ledger** is the continuity layer: `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, and linked evidence paths.
+- **Bridge** is the Ghidra-to-LLDB workflow for carrying static anchors into dynamic confirmation.
 
 Do not push target apps, private PoCs, logs, screenshots, crash reports, scope-sensitive records, customer data, or client artifacts back to a public template repo. Keep that work in your private project clone.
 
@@ -326,13 +334,13 @@ The sync script records this mapping in `CORPUS.md` under `Lab Host Path Mapping
 You are usually not clicking around in Ghidra first. The normal loop is:
 
 1. Point Cursor or `scripts/start-target.py` at the original target path.
-2. Let intake copy the target under `targets/`, write a target map, and update `CORPUS.md`.
-3. Ask Cursor to classify observed surfaces and choose family labels or `unknown/mixed`.
-4. Ask Cursor to run a Ghidra sweep through `ghidra-mcp`.
-5. Triage TSV rows in `findings/analysis/`.
-6. Pick one candidate for deeper decompilation.
+2. Let intake copy the target under `targets/`, write a target map and dossier, and update `CORPUS.md`.
+3. Let Scryer classify observed surfaces, name coverage gaps, recommend recipes, and choose family labels or `unknown/mixed`.
+4. Ask Cursor to run the recommended Ghidra sweep through `ghidra-mcp`.
+5. Triage TSV rows in `findings/analysis/` and link the evidence in the Ledger.
+6. Pick one candidate for deeper decompilation or Bridge confirmation.
 7. Use `macre-vm-mcp`, LLDB, DTrace, logs, and small harnesses only when static analysis justifies it.
-8. Save results to `INDEX.md`, `METRICS.md`, `HANDOFF.md`, and `artifacts/`.
+8. Save results to `INDEX.md`, `METRICS.md`, `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, `HANDOFF.md`, and `artifacts/`.
 
 You can still open the Ghidra GUI manually on the lab host when visual navigation helps. Cursor should still save durable notes and outputs back into the project clone.
 
@@ -347,7 +355,7 @@ I am the human operator. Guide me step by step. Tell me what to open, what to ru
 
 First read README.md, LAB_SAFETY.md, machines.md, CORPUS.md, METRICS.md, INDEX.md, and HANDOFF.md.
 
-Use Skills/offensive-macos-bundle-intake/SKILL.md. Start PASS-001 from "<target path>". Run target intake, update CORPUS.md, classify observed surfaces into family labels or unknown/mixed, and propose the first static sweep. Do not run dynamic tests until LAB_SAFETY.md allows them. Save outputs under findings/analysis/ and update INDEX.md, METRICS.md, and HANDOFF.md.
+Use Skills/offensive-macos-bundle-intake/SKILL.md. Start PASS-001 from "<target path>". Run target intake, write the target map and dossier, update CORPUS.md, let Scryer classify observed surfaces into family labels or unknown/mixed, and choose the first Grimoire recipe or static sweep. Do not run dynamic tests until LAB_SAFETY.md allows them. Save outputs under findings/analysis/ and update INDEX.md, METRICS.md, EVIDENCE_LEDGER.md, FLIGHT_RECORDER.md, and HANDOFF.md.
 ```
 
 ## Prompt Patterns
@@ -355,13 +363,19 @@ Use Skills/offensive-macos-bundle-intake/SKILL.md. Start PASS-001 from "<target 
 ### Inventory The Target
 
 ```text
-Inventory targets/<App Name>.app for PASS-001. Identify the main executable, embedded helpers, XPC services, LaunchDaemons/LaunchAgents, privileged helper tools, updater components, entitlements, code-signing flags, and obvious IPC surfaces. Update CORPUS.md, assign family labels or unknown/mixed, and propose the first Ghidra sweep.
+Inventory targets/<App Name>.app for PASS-001. Identify the main executable, embedded helpers, XPC services, LaunchDaemons/LaunchAgents, privileged helper tools, updater components, Electron indicators, entitlements, code-signing flags, and obvious IPC surfaces. Update CORPUS.md, assign family labels or unknown/mixed, write the dossier, and propose the first Grimoire recipe or Ghidra sweep.
 ```
 
 ### Run A Ghidra Sweep
 
 ```text
 Use ghidra-mcp to open the main binary for PASS-001 from the lab-host path recorded in CORPUS.md. Run scan_xpc_client_validation.py and scan_privileged_helper_surface.py. Save TSV output under findings/analysis/ and summarize candidate rows into INDEX.md.
+```
+
+### Confirm A Static Anchor With LLDB
+
+```text
+Use Skills/offensive-macos-bridge-ghidra-lldb/SKILL.md. Confirm the Ghidra anchor for IDX-001 with LLDB only if LAB_SAFETY.md permits the test shape. Record slide/slice uncertainty, save the LLDB transcript, and link the result in EVIDENCE_LEDGER.md and HANDOFF.md.
 ```
 
 ### Decompile One Candidate
@@ -400,6 +414,8 @@ Use Skills/offensive-macos-submission-packet/SKILL.md to draft a vendor-facing r
 - Use **Ghidra MCP** for opening Mach-O files, listing functions, decompiling, running station Ghidra scripts, and extracting repeatable TSV output.
 - Use **Ghidra GUI** when you want visual navigation, graphs, or a second human view.
 - Use **macre-vm-mcp** for codesign, entitlements, launchd, logs, LLDB, DTrace, and host checks.
+- Use **Scryer** recommendations and the **Grimoire** recipe registry to decide which static artifact should come next.
+- Use **Bridge** only after a static anchor exists and lab safety allows dynamic confirmation.
 - Use **Terminal** for simple copy, sync, git, hashes, and one-off file organization.
 - Use **custom harnesses** only after a static hypothesis is specific enough to justify them.
 

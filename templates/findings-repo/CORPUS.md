@@ -24,6 +24,20 @@ Agent-maintained component inventory. Keep this summarized; large generated maps
 | Target ID | Pass ID | Surfaces | Ontology Candidates | Evidence Path | Notes |
 |-----------|---------|----------|---------------------|---------------|-------|
 
+## Scryer Decision Support
+
+Scryer is the workbench's static-analysis decision layer. It turns intake and first-pass static facts into recommended recipes, Ghidra sweeps, coverage gaps, and next operator decisions.
+
+| Target ID | Pass ID | Dossier Path | Recommended Recipes | Coverage Gaps | Next Decision |
+|-----------|---------|--------------|---------------------|---------------|---------------|
+
+## Source-Binary Correlation
+
+Use this when source is available for an open-source or in-house target. Source can explain the shipped artifact, but the shipped binary remains the source of truth.
+
+| Target ID | Source Ref | Confidence | Evidence Path | Next Action |
+|-----------|------------|------------|---------------|-------------|
+
 ## Family Labels And Routing
 
 Family labels are evidence-derived and may be multi-valued. Use `unknown/mixed` when the inventory does not cleanly match an existing playbook.
@@ -37,6 +51,13 @@ Use this after syncing targets to the lab host for Ghidra, LLDB, DTrace, logs, o
 
 | Target ID | Local Path | Remote Path | Synced At | Notes |
 |-----------|------------|-------------|-----------|-------|
+
+## Ledger Anchors
+
+Ledger anchors connect intake, static sweeps, dynamic observations, candidate rows, and handoff notes without storing target-specific evidence in the station template.
+
+| Anchor ID | Target ID | Evidence Path | Claim / Decision | Status |
+|-----------|-----------|---------------|------------------|--------|
 
 ## Current Hypotheses And Worklist
 

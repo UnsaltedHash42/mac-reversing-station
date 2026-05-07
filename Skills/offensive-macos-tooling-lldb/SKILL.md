@@ -40,12 +40,13 @@ trigger_phrases:
 LLDB runs on the configured lab host. The `/usr/bin/lldb` shipped with the
 Xcode Command Line Tools on macOS 26 is sufficient for every Wave 1
 workflow. Cursor drives it through `macre-vm-mcp`'s
-`lldb_run` / `lldb_break_and_inspect` tools, which wrap
+`lldb_run`, `lldb_break_and_inspect`, and `lldb_run_anchors` tools, which wrap
 `/usr/bin/lldb -b -o '<cmd>' -o '<cmd>' ... <binary>`.
 
 | Step | Surface | How |
 |------|---------|-----|
 | Scripted batch run | Cursor → `macre-vm-mcp` | `lldb_run` or `lldb_break_and_inspect` |
+| Ghidra-anchor confirmation | Cursor → `macre-vm-mcp` | `lldb_run_anchors` after slide/slice uncertainty is recorded |
 | Live attach to a running PID | VM | `sudo lldb -p <pid>` then iterate via scripted `-o` as needed |
 | Quick one-liner | lab host | `ssh <lab-host> 'lldb -b -o "run" -o "register read x0 x1" -o "quit" <binary>'` |
 | Apple-signed binary with SIP on | **Not this lab** | Requires entitlement `com.apple.security.cs.debugger` + SIP tweaks; noted for completeness |

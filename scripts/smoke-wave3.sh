@@ -81,6 +81,7 @@ required = [
     "docs/playbooks/developer-tools.md",
     "docs/playbooks/tcc-heavy-consumer-apps.md",
     "docs/playbooks/adding-target-families.md",
+    "docs/playbooks/investigation-recipes.md",
 ]
 missing = [path for path in required if not Path(path).is_file()]
 if missing:
@@ -91,6 +92,12 @@ then
     ok "ontology and playbook docs exist"
 else
     fail "station docs missing" "inspect docs/ontology and docs/playbooks"
+fi
+
+if python3 scripts/validate-recipes.py --root . >/dev/null; then
+    ok "investigation recipe registry validates"
+else
+    fail "investigation recipe registry failed" "python3 scripts/validate-recipes.py --root ."
 fi
 
 section "Findings template"

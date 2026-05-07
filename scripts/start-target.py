@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 
 EXECUTABLE_LIMIT = 200
@@ -24,6 +25,7 @@ class IntakeResult:
     target_id: str
     local_path: Path
     target_map_path: Path
+    dossier_path: Path
     family_labels: list[str]
 
 
@@ -38,6 +40,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--pass-id", default="PASS-001", help="Pass ID to create or update")
     parser.add_argument("--target-id", help="Stable target ID for CORPUS.md and artifact names")
+    parser.add_argument("--source-root", type=Path, help="Optional source checkout path for source-binary correlation")
+    parser.add_argument("--source-ref", help="Optional source commit, tag, or build reference")
+    parser.add_argument("--source-url", help="Optional source repository or release URL")
+    parser.add_argument("--sast-report", type=Path, help="Optional SAST report path to correlate back to the binary")
     parser.add_argument(
         "--no-copy",
         action="store_true",
@@ -55,6 +61,7 @@ def main(argv: list[str]) -> int:
             pass_id=args.pass_id,
             target_id=args.target_id,
             copy_target=not args.no_copy,
+            source_metadata=source_metadata_from_args(args),
         )
     except IntakeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -63,6 +70,7 @@ def main(argv: list[str]) -> int:
     print(f"OK - initialized {result.target_id} for {args.pass_id}")
     print(f"local target: {result.local_path}")
     print(f"target map: {result.target_map_path}")
+    print(f"dossier: {result.dossier_path}")
     print(f"family labels: {', '.join(result.family_labels)}")
     return 0
 
@@ -77,6 +85,7 @@ def start_target(
     pass_id: str,
     target_id: str | None = None,
     copy_target: bool = True,
+    source_metadata: dict[str, str] | None = None,
 ) -> IntakeResult:
     project_root = project_root.resolve()
     source = source.expanduser().resolve()
@@ -88,21 +97,27 @@ def start_target(
         raise IntakeError(f"could not derive target id from: {source}")
 
     local_path = copy_or_reference_target(source, project_root, copy_target=copy_target)
-    inventory = inventory_target(local_path, source_path=source)
+    inventory = inventory_target(local_path, source_path=source, source_metadata=source_metadata or {})
     inventory["pass_id"] = pass_id
     inventory["target"]["id"] = target_id
 
     analysis_dir = project_root / "findings/analysis"
     analysis_dir.mkdir(parents=True, exist_ok=True)
     target_map_path = analysis_dir / f"{pass_id}-{target_id}-target-map.json"
+    dossier_path = analysis_dir / f"{pass_id}-{target_id}-dossier.json"
     inventory["target_map_path"] = str(target_map_path.relative_to(project_root))
+    inventory["dossier_path"] = str(dossier_path.relative_to(project_root))
+    inventory["decision_support"] = build_decision_support(inventory)
+    inventory["dossier"] = build_dossier(inventory)
     write_json(target_map_path, inventory)
+    write_json(dossier_path, inventory["dossier"])
     update_corpus(project_root / "CORPUS.md", inventory)
 
     return IntakeResult(
         target_id=target_id,
         local_path=local_path,
         target_map_path=target_map_path,
+        dossier_path=dossier_path,
         family_labels=inventory["classification"]["family_labels"],
     )
 
@@ -132,10 +147,11 @@ def copy_or_reference_target(source: Path, project_root: Path, copy_target: bool
         shutil.copy2(source, destination)
     return destination.resolve()
 
-def inventory_target(local_path: Path, source_path: Path) -> dict[str, Any]:
+def inventory_target(local_path: Path, source_path: Path, source_metadata: dict[str, str]) -> dict[str, Any]:
     bundle = read_bundle_metadata(local_path)
     components = find_components(local_path, bundle)
-    surfaces = classify_surfaces(local_path, bundle, components)
+    electron = detect_electron(local_path)
+    surfaces = classify_surfaces(local_path, bundle, components, electron)
     family_labels = classify_families(local_path, surfaces)
 
     return {
@@ -147,6 +163,8 @@ def inventory_target(local_path: Path, source_path: Path) -> dict[str, Any]:
         },
         "bundle": bundle,
         "components": components,
+        "electron": electron,
+        "source_correlation": build_source_correlation(source_metadata),
         "classification": {
             "surfaces": surfaces,
             "family_labels": family_labels,
@@ -242,7 +260,212 @@ def component(kind: str, path: Path, root: Path) -> dict[str, str]:
     return data
 
 
-def classify_surfaces(root: Path, bundle: dict[str, str], components: list[dict[str, str]]) -> list[str]:
+def detect_electron(root: Path) -> dict[str, Any]:
+    if not root.is_dir():
+        return {
+            "is_electron": False,
+            "asar_archives": [],
+            "package_json": [],
+            "preload_scripts": [],
+            "native_modules": [],
+            "frameworks": [],
+            "package_metadata": {},
+        }
+
+    asar_archives = relative_paths(root, root.rglob("*.asar"))
+    package_json = relative_paths(root, root.rglob("package.json"))
+    preload_scripts = relative_paths(root, (path for path in root.rglob("*.js") if "preload" in path.name.lower()))
+    native_modules = relative_paths(root, root.rglob("*.node"))
+    frameworks = relative_paths(root, (path for path in root.rglob("*.framework") if "electron" in path.name.lower()))
+    package_metadata = read_package_metadata(root, package_json[:3])
+    text = " ".join([root.name, *asar_archives, *package_json, *frameworks]).lower()
+    dependency_names = package_metadata.get("dependency_names", [])
+    has_electron_dependency = any("electron" in str(name).lower() for name in dependency_names)
+    is_electron = bool(asar_archives or frameworks or "electron" in text or has_electron_dependency)
+
+    return {
+        "is_electron": is_electron,
+        "asar_archives": asar_archives[:20],
+        "package_json": package_json[:20],
+        "preload_scripts": preload_scripts[:20],
+        "native_modules": native_modules[:20],
+        "frameworks": frameworks[:20],
+        "package_metadata": package_metadata,
+    }
+
+
+def relative_paths(root: Path, paths) -> list[str]:
+    results = []
+    root_resolved = root.resolve()
+    for path in sorted(paths):
+        if path.is_symlink() or not is_within_root(path, root_resolved):
+            continue
+        try:
+            results.append(str(path.relative_to(root)))
+        except ValueError:
+            results.append(str(path))
+    return results
+
+
+def read_package_metadata(root: Path, package_paths: list[str]) -> dict[str, Any]:
+    for rel_path in package_paths:
+        path = root / rel_path
+        if path.is_symlink() or not is_within_root(path, root.resolve()):
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        metadata = {
+            key: data[key]
+            for key in ("name", "version", "main")
+            if isinstance(data.get(key), str)
+        }
+        dependencies = data.get("dependencies")
+        if isinstance(dependencies, dict):
+            metadata["dependency_names"] = sorted(str(key) for key in dependencies)[:30]
+        return metadata
+    return {}
+
+
+def source_metadata_from_args(args: argparse.Namespace) -> dict[str, str]:
+    metadata: dict[str, str] = {}
+    if args.source_root:
+        metadata["source_root"] = str(args.source_root.expanduser())
+    if args.source_ref:
+        metadata["source_ref"] = args.source_ref
+    if args.source_url:
+        metadata["source_url"] = redact_url(args.source_url)
+    if args.sast_report:
+        metadata["sast_report"] = str(args.sast_report.expanduser().resolve())
+    return metadata
+
+
+def redact_url(value: str) -> str:
+    parts = urlsplit(value)
+    if not parts.username and not parts.password:
+        return value
+    host = parts.hostname or ""
+    if parts.port:
+        host = f"{host}:{parts.port}"
+    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+
+
+def build_source_correlation(metadata: dict[str, str]) -> dict[str, str]:
+    if not metadata:
+        return {
+            "status": "not-provided",
+            "confidence": "none",
+            "next_action": "Add source metadata only when source is available and useful for binary confirmation.",
+        }
+
+    confidence = "unverified"
+    status = "provided"
+    source_root = metadata.get("source_root", "")
+    if source_root:
+        confidence = "pending-binary-correlation"
+        if not Path(source_root).exists():
+            status = "provided-missing-local-path"
+
+    result = dict(metadata)
+    result.update(
+        {
+            "status": status,
+            "confidence": confidence,
+            "next_action": "Correlate source claims back to shipped binary symbols, strings, or decompiled functions.",
+        }
+    )
+    return result
+
+
+def build_decision_support(inventory: dict[str, Any]) -> dict[str, Any]:
+    surfaces = set(inventory["classification"]["surfaces"])
+    recipes: list[str] = ["bundle-dossier"]
+    ghidra_scripts: list[str] = []
+    coverage_gaps: list[str] = []
+
+    if "xpc-services" in surfaces:
+        recipes.append("map-xpc-endpoints")
+        ghidra_scripts.append("scan_xpc_client_validation.py")
+    if surfaces & {"privileged-helper-tools", "launchd-jobs", "updater"}:
+        recipes.append("inspect-privileged-helper-or-updater")
+        ghidra_scripts.append("scan_privileged_helper_surface.py")
+    if surfaces & {"privacy-permissions", "keychain"}:
+        recipes.append("review-tcc-and-persistent-authorization")
+        ghidra_scripts.extend(["scan_tcc_prompt_surface.py", "scan_persistent_authorization.py"])
+    if "electron-app" in surfaces:
+        recipes.append("review-electron-ipc-and-packaging")
+        coverage_gaps.append("Electron main/preload IPC requires source or ASAR review before dynamic confirmation.")
+    if inventory["source_correlation"]["status"] != "not-provided":
+        recipes.append("correlate-source-to-binary")
+        coverage_gaps.append("Source metadata is unverified until tied to the shipped binary.")
+    if not ghidra_scripts:
+        recipes.append("inventory-first-manual-routing")
+        coverage_gaps.append("No family-specific Ghidra sweep selected from intake alone.")
+
+    coverage_gaps.append("Codesign, entitlements, notarization, and load-command details require follow-up tooling.")
+    return {
+        "scryer_version": 1,
+        "recommended_recipes": dedupe(recipes),
+        "recommended_ghidra_scripts": dedupe(ghidra_scripts),
+        "coverage_gaps": dedupe(coverage_gaps),
+        "next_decision": next_decision(dedupe(recipes), dedupe(ghidra_scripts)),
+    }
+
+
+def build_dossier(inventory: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "dossier_version": 1,
+        "target": inventory["target"],
+        "pass_id": inventory["pass_id"],
+        "bundle": inventory["bundle"],
+        "classification": inventory["classification"],
+        "component_summary": summarize_components(inventory["components"]),
+        "components": inventory["components"][:75],
+        "electron": inventory["electron"],
+        "source_correlation": inventory["source_correlation"],
+        "decision_support": inventory["decision_support"],
+        "ledger": {
+            "anchor_id": ledger_anchor_id(inventory),
+            "target_map_path": inventory["target_map_path"],
+            "dossier_path": inventory["dossier_path"],
+            "flight_recorder": "FLIGHT_RECORDER.md",
+        },
+    }
+
+
+def summarize_components(components: list[dict[str, str]]) -> dict[str, Any]:
+    by_kind: dict[str, int] = {}
+    for item in components:
+        by_kind[item["kind"]] = by_kind.get(item["kind"], 0) + 1
+    return {
+        "total": len(components),
+        "by_kind": dict(sorted(by_kind.items())),
+    }
+
+
+def next_decision(recipes: list[str], ghidra_scripts: list[str]) -> str:
+    if ghidra_scripts:
+        return f"Run first static sweep: {', '.join(ghidra_scripts)}"
+    return f"Use recipe routing: {', '.join(recipes)}"
+
+
+def dedupe(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+def ledger_anchor_id(inventory: dict[str, Any]) -> str:
+    return f"{inventory['pass_id']}:{inventory['target']['id']}"
+
+
+def classify_surfaces(
+    root: Path,
+    bundle: dict[str, str],
+    components: list[dict[str, str]],
+    electron: dict[str, Any],
+) -> list[str]:
     surfaces: set[str] = set()
     text = " ".join([root.name, *(component["path"] for component in components)]).lower()
 
@@ -260,6 +483,14 @@ def classify_surfaces(root: Path, bundle: dict[str, str], components: list[dict[
         surfaces.add("keychain")
     if "plugin" in text or "extension" in text:
         surfaces.add("plugin-or-extension")
+    if electron["is_electron"]:
+        surfaces.add("electron-app")
+    if electron["asar_archives"]:
+        surfaces.add("asar-archive")
+    if electron["preload_scripts"]:
+        surfaces.add("electron-preload-scripts")
+    if electron["native_modules"]:
+        surfaces.add("electron-native-modules")
 
     return sorted(surfaces)
 
@@ -291,6 +522,9 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
     surface_row = surface_classification_row(inventory)
     family_row = family_routing_row(inventory)
     worklist_row = worklist_row_for(inventory)
+    scryer_row = scryer_row_for(inventory)
+    source_row = source_correlation_row(inventory)
+    ledger_row = ledger_anchor_row(inventory)
 
     text = ensure_table_row(text, "## Corpus Passes", pass_row, row_key=f"| {inventory['pass_id']} |")
     text = ensure_table_row(
@@ -301,14 +535,38 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
     )
     for row in component_rows(inventory):
         text = ensure_table_row(text, "## Discovered Components", row, row_key=row)
-    text = ensure_table_row(text, "## Surface Classification", surface_row, row_key=surface_row)
+    text = ensure_table_row(
+        text,
+        "## Surface Classification",
+        surface_row,
+        row_key=f"| {inventory['target']['id']} | {inventory['pass_id']} |",
+    )
+    text = ensure_table_row(
+        text,
+        "## Scryer Decision Support",
+        scryer_row,
+        row_key=f"| {inventory['target']['id']} | {inventory['pass_id']} |",
+    )
+    if source_row:
+        text = ensure_table_row(
+            text,
+            "## Source-Binary Correlation",
+            source_row,
+            row_key=f"| {inventory['target']['id']} |",
+        )
     text = ensure_table_row(
         text,
         "## Family Labels And Routing",
         family_row,
         row_key=f"| {inventory['target']['id']} | {', '.join(inventory['classification']['family_labels'])} |",
     )
-    text = ensure_table_row(text, "## Current Hypotheses And Worklist", worklist_row, row_key=worklist_row)
+    text = ensure_table_row(text, "## Ledger Anchors", ledger_row, row_key=f"| {ledger_anchor_id(inventory)} |")
+    text = ensure_table_row(
+        text,
+        "## Current Hypotheses And Worklist",
+        worklist_row,
+        row_key=f"| {inventory['pass_id']} | Scryer review for {inventory['target']['name']} |",
+    )
     corpus_path.write_text(text, encoding="utf-8")
 
 
@@ -344,7 +602,28 @@ def surface_classification_row(inventory: dict[str, Any]) -> str:
     surfaces = ", ".join(inventory["classification"]["surfaces"]) or "none detected yet"
     return (
         f"| {inventory['target']['id']} | {inventory['pass_id']} | {surfaces} | | "
-        f"`{inventory['target_map_path']}` | intake inventory |"
+        f"`{inventory['dossier_path']}` | Scryer intake dossier |"
+    )
+
+
+def scryer_row_for(inventory: dict[str, Any]) -> str:
+    support = inventory["decision_support"]
+    recipes = ", ".join(support["recommended_recipes"])
+    gaps = "; ".join(support["coverage_gaps"])
+    return (
+        f"| {inventory['target']['id']} | {inventory['pass_id']} | `{inventory['dossier_path']}` | "
+        f"{recipes} | {gaps} | {support['next_decision']} |"
+    )
+
+
+def source_correlation_row(inventory: dict[str, Any]) -> str:
+    source = inventory["source_correlation"]
+    if source["status"] == "not-provided":
+        return ""
+    ref = source.get("source_ref") or source.get("source_url") or source.get("source_root") or "provided"
+    return (
+        f"| {inventory['target']['id']} | {ref} | {source['confidence']} | "
+        f"`{inventory['dossier_path']}` | {source['next_action']} |"
     )
 
 
@@ -357,9 +636,17 @@ def family_routing_row(inventory: dict[str, Any]) -> str:
 
 
 def worklist_row_for(inventory: dict[str, Any]) -> str:
+    support = inventory["decision_support"]
     return (
-        f"| {inventory['pass_id']} | Review intake inventory for {inventory['target']['name']} | "
-        f"`{inventory['target_map_path']}` | Pick first static sweep from family labels | pending |"
+        f"| {inventory['pass_id']} | Scryer review for {inventory['target']['name']} | "
+        f"`{inventory['dossier_path']}` | {support['next_decision']} | pending |"
+    )
+
+
+def ledger_anchor_row(inventory: dict[str, Any]) -> str:
+    return (
+        f"| {ledger_anchor_id(inventory)} | {inventory['target']['id']} | `{inventory['dossier_path']}` | "
+        f"Scryer intake decision support | open |"
     )
 
 
@@ -375,16 +662,24 @@ def next_playbook(labels: list[str]) -> str:
 
 
 def ensure_table_row(text: str, heading: str, row: str, row_key: str) -> str:
-    if row_key in text:
-        return text
-
     lines = text.splitlines()
     try:
         heading_line = next(i for i, line in enumerate(lines) if line.strip() == heading)
     except StopIteration as exc:
         raise IntakeError(f"missing {heading} section in CORPUS.md") from exc
-    insert_at = None
+    section_end = len(lines)
     for index in range(heading_line + 1, len(lines)):
+        if lines[index].startswith("## "):
+            section_end = index
+            break
+
+    for index in range(heading_line + 1, section_end):
+        if lines[index].startswith(row_key):
+            lines[index] = row
+            return "\n".join(lines) + "\n"
+
+    insert_at = None
+    for index in range(heading_line + 1, section_end):
         line = lines[index].strip()
         if line.startswith("|") and set(line.replace("|", "").strip()) <= {"-", ":"}:
             insert_at = index + 1
@@ -427,6 +722,14 @@ def should_skip_executable(path: Path) -> bool:
 
 def is_inside_bundle(path: Path, suffix: str) -> bool:
     return any(parent.suffix == suffix for parent in path.parents)
+
+
+def is_within_root(path: Path, root_resolved: Path) -> bool:
+    try:
+        path.resolve().relative_to(root_resolved)
+        return True
+    except (OSError, ValueError):
+        return False
 
 
 def sha256_file(path: Path) -> str:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from fastmcp import FastMCP
@@ -75,3 +76,57 @@ def register(mcp: FastMCP) -> None:
             post_break_commands=post,
             timeout_sec=timeout_sec,
         )
+
+    @mcp.tool
+    def lldb_run_anchors(
+        binary_path: str,
+        anchors: list[dict[str, str]],
+        args: list[str] | None = None,
+        extra_post_commands: list[str] | None = None,
+        timeout_sec: float = 30.0,
+    ) -> dict[str, Any]:
+        """Run LLDB from Ghidra-derived anchors and return the batch transcript.
+
+        Each anchor should provide either ``symbol`` or ``address``. Addresses
+        are passed to LLDB as-is, so callers must account for image slide and
+        architecture slice before relying on an address stop.
+        """
+        breakpoints = []
+        skipped = []
+        for anchor in anchors:
+            breakpoint = anchor_breakpoint(anchor)
+            if breakpoint:
+                breakpoints.append(breakpoint)
+            else:
+                skipped.append(anchor)
+
+        post = ["image list", "bt 10", "register read"]
+        post.extend(cmd for cmd in (extra_post_commands or []) if safe_lldb_command(cmd))
+        result = lldb_run(
+            binary_path=binary_path,
+            args=args,
+            breakpoints=breakpoints,
+            post_break_commands=post,
+            timeout_sec=timeout_sec,
+        )
+        return {
+            "anchors_requested": anchors,
+            "breakpoints": breakpoints,
+            "skipped_anchors": skipped,
+            "slide_warning": "Address anchors require caller-verified image slide and architecture slice.",
+            "result": result,
+        }
+
+
+def anchor_breakpoint(anchor: dict[str, str]) -> str:
+    symbol = anchor.get("symbol", "").strip()
+    if symbol and safe_lldb_command(symbol):
+        return symbol
+    address = anchor.get("address", "").strip()
+    if address and re.fullmatch(r"(0x[0-9A-Fa-f]+|[0-9]+)", address):
+        return f"-a {address}"
+    return ""
+
+
+def safe_lldb_command(value: str) -> bool:
+    return "\n" not in value and "\r" not in value and ";" not in value

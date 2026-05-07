@@ -7,11 +7,13 @@ import asyncio
 import pytest
 
 from macre_vm_mcp.server import build_server
+from macre_vm_mcp.tools_lldb import anchor_breakpoint, safe_lldb_command
 
 
 EXPECTED_TOOLS = {
     "lldb_run",
     "lldb_break_and_inspect",
+    "lldb_run_anchors",
     "dtrace_script",
     "dtrace_oneliner",
     "codesign_inspect",
@@ -54,3 +56,14 @@ def test_all_expected_tools_registered() -> None:
 def test_each_tool_is_present(tool_name: str) -> None:
     mcp = build_server()
     assert tool_name in _extract_tool_names(mcp)
+
+
+def test_anchor_breakpoint_accepts_symbol_and_hex_address() -> None:
+    assert anchor_breakpoint({"symbol": "_objc_msgSend"}) == "_objc_msgSend"
+    assert anchor_breakpoint({"address": "0x100003f10"}) == "-a 0x100003f10"
+
+
+def test_anchor_breakpoint_rejects_command_shaped_values() -> None:
+    assert anchor_breakpoint({"symbol": "_main; process continue"}) == ""
+    assert anchor_breakpoint({"address": "0x1000 process continue"}) == ""
+    assert not safe_lldb_command("register read\nprocess continue")
