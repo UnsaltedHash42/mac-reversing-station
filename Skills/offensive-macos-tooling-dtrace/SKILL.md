@@ -36,7 +36,7 @@ trigger_phrases:
 
 ## Lab topology — where to run this
 
-DTrace always runs on NightBlood. `/usr/sbin/dtrace` is standard on
+DTrace runs on the configured lab host. `/usr/sbin/dtrace` is standard on
 macOS 26. Cursor drives it via `macre-vm-mcp`'s `dtrace_script` (full
 D program) and `dtrace_oneliner` (single `-n` expression).
 
@@ -178,7 +178,7 @@ For a one-shot program run (not attach):
 
     macre-vm-mcp: dtrace_script {
       "script": "syscall:::entry /pid == $target/ { @[probefunc] = count(); } END { printa(@); }",
-      "target_command": ["/Users/szeth/Targets/proj/foo", "arg1", "arg2"],
+      "target_command": ["/Users/<remote-user>/Targets/proj/foo", "arg1", "arg2"],
       "timeout_sec": 8
     }
 
@@ -311,7 +311,7 @@ aggregation.
 
         macre-vm-mcp: dtrace_script {
           "script": "syscall:::entry /pid == $target/ { @[probefunc] = count(); } END { printa(@); }",
-          "target_command": ["/Users/szeth/Targets/<proj>/hello"],
+          "target_command": ["/Users/<remote-user>/Targets/<proj>/hello"],
           "timeout_sec": 5
         }
 
@@ -322,7 +322,7 @@ aggregation.
 
         macre-vm-mcp: dtrace_script {
           "script": "pid$target::objc_msgSend:entry { @[copyinstr(arg1)] = count(); } END { printa(@); }",
-          "target_command": ["/Users/szeth/Targets/<proj>/hello"],
+          "target_command": ["/Users/<remote-user>/Targets/<proj>/hello"],
           "timeout_sec": 5
         }
 

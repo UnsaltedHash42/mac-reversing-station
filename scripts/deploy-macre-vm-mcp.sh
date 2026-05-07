@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy macre-vm-mcp to NightBlood.
+# Deploy macre-vm-mcp to the primary lab host.
 #
 # - Syncs the package source to ~/macre-vm-mcp on the VM.
 # - Creates/updates a ~/.venvs/macre-vm-mcp venv against the homebrew python.
@@ -10,11 +10,12 @@
 # Idempotent. Safe to re-run.
 set -euo pipefail
 
-HOST="NightBlood"
+HOST="${MACRE_MACHINE:-lab-host}"
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/macre-vm-mcp"
-REMOTE_SRC="/Users/szeth/macre-vm-mcp"
-REMOTE_VENV="/Users/szeth/.venvs/macre-vm-mcp"
-REMOTE_PYTHON="/opt/homebrew/bin/python3"
+REMOTE_HOME="${MACRE_REMOTE_HOME:-/Users/<remote-user>}"
+REMOTE_SRC="${REMOTE_HOME}/macre-vm-mcp"
+REMOTE_VENV="${REMOTE_HOME}/.venvs/macre-vm-mcp"
+REMOTE_PYTHON="${MACRE_REMOTE_PYTHON:-/opt/homebrew/bin/python3}"
 
 if [[ ! -d "${SRC_DIR}" ]]; then
     echo "ERROR: source dir not found at ${SRC_DIR}" >&2
@@ -43,14 +44,14 @@ ssh -o BatchMode=yes "${HOST}" "bash -lc '
 
 echo ""
 echo "OK — macre-vm-mcp deployed. Register in ~/.cursor/mcp.json:"
-cat <<'JSON'
+cat <<JSON
     "macre-vm-mcp": {
       "command": "ssh",
       "args": [
         "-o", "BatchMode=yes",
         "-o", "ServerAliveInterval=30",
-        "NightBlood",
-        "/Users/szeth/.venvs/macre-vm-mcp/bin/python",
+        "${HOST}",
+        "${REMOTE_VENV}/bin/python",
         "-m", "macre_vm_mcp"
       ],
       "env": {}

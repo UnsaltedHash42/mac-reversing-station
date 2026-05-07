@@ -9,7 +9,7 @@ description: >-
   _objc_msgSend", "read 64 bytes at $sp", "patch this instruction
   live", "attach lldb to pid 1234", "what does x16 look like at this
   syscall site". Works against non-Apple-signed binaries freely on
-  NightBlood (SIP off), with caveats noted for Apple-signed targets.
+  the configured lab host, with caveats noted for Apple-signed targets.
 folder: offensive-macos-tooling-lldb
 source: skillz-wave1
 trigger_phrases:
@@ -37,7 +37,7 @@ trigger_phrases:
 
 ## Lab topology — where to run this
 
-LLDB always runs on NightBlood. The `/usr/bin/lldb` shipped with the
+LLDB runs on the configured lab host. The `/usr/bin/lldb` shipped with the
 Xcode Command Line Tools on macOS 26 is sufficient for every Wave 1
 workflow. Cursor drives it through `macre-vm-mcp`'s
 `lldb_run` / `lldb_break_and_inspect` tools, which wrap
@@ -47,7 +47,7 @@ workflow. Cursor drives it through `macre-vm-mcp`'s
 |------|---------|-----|
 | Scripted batch run | Cursor → `macre-vm-mcp` | `lldb_run` or `lldb_break_and_inspect` |
 | Live attach to a running PID | VM | `sudo lldb -p <pid>` then iterate via scripted `-o` as needed |
-| Quick one-liner | VM | `ssh NightBlood 'lldb -b -o "run" -o "register read x0 x1" -o "quit" <binary>'` |
+| Quick one-liner | lab host | `ssh <lab-host> 'lldb -b -o "run" -o "register read x0 x1" -o "quit" <binary>'` |
 | Apple-signed binary with SIP on | **Not this lab** | Requires entitlement `com.apple.security.cs.debugger` + SIP tweaks; noted for completeness |
 
 ## Theory
@@ -144,13 +144,13 @@ bytes to compare before/after.
     lldb -n "Safari"                           # attach by process name (first match)
 
 Requires either:
-- SIP off (our case — works freely against every binary on NightBlood), or
+- SIP off on the lab host, or
 - The binary was compiled with `get-task-allow`, or
 - You are the same-user non-SIP-restricted process owner.
 
-### SIP-off caveats (NightBlood) vs SIP-on caveats
+### SIP-off caveats vs SIP-on caveats
 
-On NightBlood (SIP off):
+On a SIP-off lab host:
 - lldb attaches to anything, including Apple-signed daemons.
 - You can write memory of Apple-signed processes.
 - You can set breakpoints inside the dyld shared cache (lldb
@@ -173,7 +173,7 @@ reference this):
 Via MCP:
 
     macre-vm-mcp: lldb_break_and_inspect {
-      "binary_path": "/Users/szeth/Targets/proj/hello",
+      "binary_path": "/Users/<remote-user>/Targets/proj/hello",
       "symbol": "-[Greeter sayHi]",
       "dump_registers": true,
       "dump_stack_bytes": 64,
@@ -190,7 +190,7 @@ reasoning.
 `lldb_run` directly:
 
     macre-vm-mcp: lldb_run {
-      "binary_path": "/Users/szeth/Targets/proj/hello",
+      "binary_path": "/Users/<remote-user>/Targets/proj/hello",
       "breakpoints": ["-[Greeter sayHi]", "-[Greeter someOther]"],
       "post_break_commands": [
         "register read x0 x1",
@@ -245,7 +245,7 @@ a specific syscall inside a specific function you already break on.
 
 ### E: attach to a running daemon without interrupting it
 
-Interactive (SSH into NightBlood manually, not MCP):
+Interactive (SSH into the lab host manually, not MCP):
 
     sudo lldb -p $(pgrep -f MyDaemon)
     (lldb) br set -n somefn -G true
@@ -339,7 +339,7 @@ static inference.
 3. From Cursor:
 
         macre-vm-mcp: lldb_run {
-          "binary_path": "/Users/szeth/Targets/<proj>/hello",
+          "binary_path": "/Users/<remote-user>/Targets/<proj>/hello",
           "breakpoints": ["_objc_msgSend"],
           "post_break_commands": [
             "register read x0 x1",

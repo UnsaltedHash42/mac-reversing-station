@@ -32,11 +32,11 @@ trigger_phrases:
 
 | Step | Surface | How |
 |------|---------|-----|
-| Open/import binary | NightBlood primary | `ghidra-mcp` over SSH via `/Users/szeth/bin/ghidra-mcp-launch` |
+| Open/import binary | primary lab host | `ghidra-mcp` over SSH via `/Users/<remote-user>/bin/ghidra-mcp-launch` |
 | List/decompile/analyze | Cursor | MCP tools such as `program.open`, `function.list`, `function.by_name`, `decomp.function` |
-| Run hunt script | Cursor -> NightBlood | `ghidra.script` with scripts under `/Users/szeth/ghidra-scripts/` |
-| Cross-check metadata | NightBlood | `macre-vm-mcp` tools for entitlements, codesign, launchd, logs |
-| Human visual depth work | NightBlood GUI | Hopper may still be used manually, but it is not in the agent MCP loop |
+| Run hunt script | Cursor -> primary lab host | `ghidra.script` with scripts under `/Users/<remote-user>/ghidra-scripts/` |
+| Cross-check metadata | primary lab host | `macre-vm-mcp` tools for entitlements, codesign, launchd, logs |
+| Human visual depth work | lab-host GUI | Hopper may still be used manually, but it is not in the agent MCP loop |
 
 Full topology: `Skills/offensive-macos-station-topology/SKILL.md`.
 
@@ -44,7 +44,7 @@ Full topology: `Skills/offensive-macos-station-topology/SKILL.md`.
 
 Ghidra is now the station's primary agent-facing disassembler because it can be driven as a headless analysis engine. Cursor does not need a GUI click path: it starts a stdio MCP server over SSH, opens a program into a persistent Ghidra project, and keeps a `session_id` for follow-up calls.
 
-The station uses `mrphrazer/ghidra-headless-mcp` pinned at commit `b9c491a6383dbc68c581e7fed16341ac47e7faba`. It exposes a real `pyghidra` backend, stdio transport, and about 212 tools. The richer `bethington/ghidra-mcp` plugin remains useful context, but its 5.6/5.7 headless server currently crashes on NightBlood with duplicate HTTP context registration, so it is not the live station path.
+The station uses `mrphrazer/ghidra-headless-mcp` pinned at commit `b9c491a6383dbc68c581e7fed16341ac47e7faba`. It exposes a real `pyghidra` backend, stdio transport, and about 212 tools. The richer `bethington/ghidra-mcp` plugin remains useful context, but this station's live path is the SSH-backed headless server.
 
 Ghidra's first open of a binary is the expensive step. It imports the file, runs analyzers, discovers functions and strings, then returns a `session_id`. Reuse that session for every later `function.*`, `decomp.*`, `listing.*`, `symbol.*`, and `ghidra.script` call. Do not reopen the same binary for every question.
 
@@ -68,7 +68,7 @@ Confirm exact tool schemas with `tools/list` because the MCP server is pinned so
 1. Health check: call `health.ping`.
 2. Open the binary:
    - Tool: `program.open`
-   - Arguments: `path`, `project_location="/Users/szeth/ghidra-projects"`, `project_name="<program>-analysis"`, `read_only=true`, `update_analysis=true`
+   - Arguments: `path` from `CORPUS.md` `Lab Host Path Mapping`, `project_location="/Users/<remote-user>/ghidra-projects"`, `project_name="<program>-analysis"`, `read_only=true`, `update_analysis=true`
    - Output artifact: `session_id`
 3. Find the target function:
    - If you know the name: `function.by_name(session_id, name, exact=false)`
@@ -81,7 +81,7 @@ Confirm exact tool schemas with `tools/list` because the MCP server is pinned so
 
 ## Workflow B — Breadth Sweep With A Script
 
-1. Sync scripts to NightBlood:
+1. Sync scripts to the primary lab host:
 
    ```bash
    scripts/install-ghidra-host.sh --install
@@ -89,11 +89,11 @@ Confirm exact tool schemas with `tools/list` because the MCP server is pinned so
 
 2. For each target binary, call `program.open` once and retain the `session_id`.
 3. Run the relevant script:
-   - Wrong-door: `/Users/szeth/ghidra-scripts/scan_wrong_door.py`
-   - Defaults bypass: `/Users/szeth/ghidra-scripts/scan_defaults_bypass.py`
-   - Catalyst porting gap: `/Users/szeth/ghidra-scripts/scan_catalyst_porting_gap.py`
-   - Code-sign flags: `/Users/szeth/ghidra-scripts/scan_flags_zero.py`
-   - XPC listeners: `/Users/szeth/ghidra-scripts/dump_xpc_listeners.py`
+   - Wrong-door: `/Users/<remote-user>/ghidra-scripts/scan_wrong_door.py`
+   - Defaults bypass: `/Users/<remote-user>/ghidra-scripts/scan_defaults_bypass.py`
+   - Catalyst porting gap: `/Users/<remote-user>/ghidra-scripts/scan_catalyst_porting_gap.py`
+   - Code-sign flags: `/Users/<remote-user>/ghidra-scripts/scan_flags_zero.py`
+   - XPC listeners: `/Users/<remote-user>/ghidra-scripts/dump_xpc_listeners.py`
 4. Save stdout TSV under the active findings repo, usually `findings/analysis/<date>-<class>-sweep.tsv`.
 5. Rank candidates by evidence density, then use dynamic tools (`macre-vm-mcp`, LLDB, DTrace, ObjC harnesses) for proof or closure.
 

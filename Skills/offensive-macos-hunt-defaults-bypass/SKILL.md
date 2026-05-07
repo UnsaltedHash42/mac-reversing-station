@@ -31,10 +31,10 @@ trigger_phrases:
 
 | Step | Surface | How |
 |------|---------|-----|
-| Static string/script sweep | NightBlood via Cursor | `ghidra-mcp` + `/Users/szeth/ghidra-scripts/scan_defaults_bypass.py` |
-| Process classification | NightBlood | launchd plist inspection via CLI or `macre-vm-mcp` |
+| Static string/script sweep | lab host via Cursor | `ghidra-mcp` + `/Users/<remote-user>/ghidra-scripts/scan_defaults_bypass.py` |
+| Process classification | lab host | launchd plist inspection via CLI or `macre-vm-mcp` |
 | Defaults write test | primary or crash-test | run as UID 501, never root first |
-| Runtime confirmation | NightBlood | `log stream`, daemon restart, DTrace/LLDB only if needed |
+| Runtime confirmation | lab host | `log stream`, daemon restart, DTrace/LLDB only if needed |
 | Evidence record | Findings repo | TSV + before/after logs under `findings/analysis/` |
 
 ## Vulnerability Class Definition
@@ -63,13 +63,13 @@ Weak anchors:
 1. Open the target:
 
    ```text
-   program.open(path="/path/to/binary", project_location="/Users/szeth/ghidra-projects", project_name="defaults-<target>", read_only=true, update_analysis=true)
+   program.open(path="/path/to/binary", project_location="/Users/<remote-user>/ghidra-projects", project_name="defaults-<target>", read_only=true, update_analysis=true)
    ```
 
 2. Run:
 
    ```text
-   ghidra.script(session_id="<session>", path="/Users/szeth/ghidra-scripts/scan_defaults_bypass.py", script_args=[])
+   ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_defaults_bypass.py", script_args=[])
    ```
 
 3. Save TSV:

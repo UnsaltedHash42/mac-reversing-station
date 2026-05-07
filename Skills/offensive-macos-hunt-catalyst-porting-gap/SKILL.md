@@ -31,8 +31,8 @@ trigger_phrases:
 
 | Step | Surface | How |
 |------|---------|-----|
-| Static sweep | NightBlood via Cursor | `ghidra-mcp` + `/Users/szeth/ghidra-scripts/scan_catalyst_porting_gap.py` |
-| Platform branch RE | NightBlood via Cursor | `function.by_name`, `decomp.function`, strings/xrefs |
+| Static sweep | lab host via Cursor | `ghidra-mcp` + `/Users/<remote-user>/ghidra-scripts/scan_catalyst_porting_gap.py` |
+| Platform branch RE | lab host via Cursor | `function.by_name`, `decomp.function`, strings/xrefs |
 | App identity confirmation | primary + cross-platform | build minimal native/Catalyst clients when needed |
 | Dynamic service reachability | crash-test preferred | XPC harness under native app and Catalyst app identities |
 | Matrix | Findings repo | native macOS vs Catalyst vs Intel/cross-platform if available |
@@ -64,13 +64,13 @@ Medium anchors include platform strings and entitlement strings in the same bina
 1. Open target:
 
    ```text
-   program.open(path="/path/to/daemon", project_location="/Users/szeth/ghidra-projects", project_name="catalyst-<target>", read_only=true, update_analysis=true)
+   program.open(path="/path/to/daemon", project_location="/Users/<remote-user>/ghidra-projects", project_name="catalyst-<target>", read_only=true, update_analysis=true)
    ```
 
 2. Run:
 
    ```text
-   ghidra.script(session_id="<session>", path="/Users/szeth/ghidra-scripts/scan_catalyst_porting_gap.py", script_args=[])
+   ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_catalyst_porting_gap.py", script_args=[])
    ```
 
 3. Save TSV:

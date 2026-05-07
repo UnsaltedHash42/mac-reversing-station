@@ -12,7 +12,6 @@ fail() {
 [[ "$(tr -d '[:space:]' < "${ROOT}/REPO_MODE")" == "analysis" ]] || fail "REPO_MODE must contain analysis"
 
 for path in \
-    "AUTHORIZATION.md" \
     "LAB_SAFETY.md" \
     "CORPUS.md" \
     "METRICS.md" \
@@ -32,7 +31,12 @@ done
 
 grep -q "Pass ID" "${ROOT}/INDEX.md" || fail "INDEX.md must include Pass ID column"
 grep -q "Pass Funnel" "${ROOT}/METRICS.md" || fail "METRICS.md must include Pass Funnel"
-grep -q "Allowed Targets" "${ROOT}/AUTHORIZATION.md" || fail "AUTHORIZATION.md must include Allowed Targets"
+grep -q "Target Inventory" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Target Inventory"
+grep -q "Discovered Components" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Discovered Components"
+grep -q "Surface Classification" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Surface Classification"
+grep -q "Family Labels And Routing" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Family Labels And Routing"
+grep -q "Lab Host Path Mapping" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Lab Host Path Mapping"
+grep -q "Current Hypotheses And Worklist" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Current Hypotheses And Worklist"
 grep -q "Destructive-Test Checklist" "${ROOT}/LAB_SAFETY.md" || fail "LAB_SAFETY.md must include Destructive-Test Checklist"
 grep -q "Report Modes" "${ROOT}/REPORTING.md" || fail "REPORTING.md must include Report Modes"
 

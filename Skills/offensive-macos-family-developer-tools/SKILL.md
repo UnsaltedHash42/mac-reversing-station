@@ -23,17 +23,19 @@ trigger_phrases:
 
 ## When To Use
 
-- A target app executes code, spawns tools, installs packages, runs builds, or manages developer environments.
+- Target intake shows code execution, tool spawning, package install, build, plugin, or developer-environment surfaces.
 - The operator needs to separate expected dangerous capability from a true boundary crossing.
 - A project-controlled input may influence privileged helpers, updates, plugins, or host-level actions.
 
 ## Workflow
 
-1. Define the threat model in `CORPUS.md`: untrusted project, local user, helper client, updater, or plugin.
-2. Read `docs/playbooks/developer-tools.md`.
-3. Map expected capabilities and possible boundary failures to ontology classes.
-4. Record expected-dangerous closures in `INDEX.md` to improve future triage.
-5. Escalate only when the behavior crosses a boundary beyond expected developer-tool operation.
+1. Confirm authorization as an operator precondition and lab state in `LAB_SAFETY.md`.
+2. Define the threat model in `CORPUS.md`: untrusted project, local user, helper client, updater, or plugin.
+3. Inventory the bundle or binary before committing to a family label.
+4. Read `docs/playbooks/developer-tools.md`.
+5. Map expected capabilities and possible boundary failures to ontology classes.
+6. Record expected-dangerous closures in `INDEX.md` to improve future triage.
+7. Escalate only when the behavior crosses a boundary beyond expected developer-tool operation.
 
 ## Primary Classes
 

@@ -3,7 +3,6 @@
 ## Read First
 
 - `REPO_MODE`
-- `AUTHORIZATION.md`
 - `LAB_SAFETY.md`
 - `CORPUS.md`
 - `METRICS.md`
@@ -15,8 +14,11 @@
 ## Active Pass
 
 - Pass ID:
-- Target family:
+- Target family labels:
 - Corpus slice:
+- Scope notes:
+- Target map:
+- Lab-host path:
 - Ontology classes:
 - Report mode, if known:
 

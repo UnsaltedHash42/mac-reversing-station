@@ -14,7 +14,7 @@ for arg in "$@"; do
         -h|--help)
             printf "usage: %s [--live]\n" "$0"
             printf "  default: structural checks only\n"
-            printf "  --live: also run NightBlood/Ghidra live checks from smoke-wave2\n"
+            printf "  --live: also run lab-host/Ghidra live checks from smoke-wave2\n"
             exit 0
             ;;
         *)
@@ -80,6 +80,7 @@ required = [
     "docs/playbooks/enterprise-security-agents.md",
     "docs/playbooks/developer-tools.md",
     "docs/playbooks/tcc-heavy-consumer-apps.md",
+    "docs/playbooks/adding-target-families.md",
 ]
 missing = [path for path in required if not Path(path).is_file()]
 if missing:
@@ -142,12 +143,12 @@ fi
 section "Live workstation checks"
 if [[ "$LIVE" -eq 1 ]]; then
     if bash scripts/smoke-wave2.sh >/dev/null 2>&1; then
-        ok "Wave 2 live workstation smoke passes"
+        ok "live lab-host workstation smoke passes"
     else
-        fail "Wave 2 live workstation smoke failed" "bash scripts/smoke-wave2.sh"
+        fail "live lab-host workstation smoke failed" "bash scripts/smoke-wave2.sh"
     fi
 else
-    ok "live NightBlood/Ghidra checks skipped by default; pass --live to run them"
+    ok "live lab-host/Ghidra checks skipped by default; pass --live to run them"
 fi
 
 printf "\nSummary: %s pass, %s fail\n" "$PASSES" "$FAILS"

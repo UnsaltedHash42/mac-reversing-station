@@ -11,9 +11,18 @@ bash scripts/smoke-findings-repo.sh
 
 Keep target-specific work private. It is for findings, artifacts, harnesses, and handoffs. Use Cursor from the project clone and ask it to use the relevant offensive-macos skills.
 
+## Start From A Target Path
+
+After copying this template into a project clone, point the station at an app bundle, installer, framework, or binary:
+
+```bash
+python3 scripts/start-target.py "/Applications/<App Name>.app" --pass-id PASS-001
+```
+
+The script copies the target under `targets/`, writes a target map under `findings/analysis/`, and updates `CORPUS.md` with initial inventory, surfaces, and family labels.
+
 ## Required Files
 
-- `AUTHORIZATION.md` — records the authority, scope, prohibited targets, and review constraints for the research program.
 - `LAB_SAFETY.md` — records machine roles, test users, snapshots, privacy/TCC hygiene, and destructive-test rules.
 - `CORPUS.md` — records target families, app inventory, surface coverage, and pass IDs.
 - `METRICS.md` — records candidate funnels, closures, escalations, confirmed findings, and blockers per pass.
@@ -22,9 +31,9 @@ Keep target-specific work private. It is for findings, artifacts, harnesses, and
 
 ## Daily Loop
 
-1. Read `REPO_MODE`, `AUTHORIZATION.md`, `LAB_SAFETY.md`, `CORPUS.md`, `METRICS.md`, `INDEX.md`, `SUBMISSION_TRIAGE.md`, and `HANDOFF.md` if one exists.
-2. Choose one target family, corpus pass, or candidate.
-3. Confirm the pass ID and scope before collecting artifacts.
+1. Read `REPO_MODE`, `LAB_SAFETY.md`, `CORPUS.md`, `METRICS.md`, `INDEX.md`, `SUBMISSION_TRIAGE.md`, and `HANDOFF.md` if one exists.
+2. Confirm authorization as an operator precondition and record any project-specific scope notes in `CORPUS.md` or `HANDOFF.md`.
+3. Choose one target path, corpus pass, or candidate.
 4. Save raw scan output under `findings/analysis/`.
 5. Save logs, crash reports, screenshots, and proof artifacts under `artifacts/`.
 6. Save custom harnesses under `tools/custom/<target>/`.
@@ -34,4 +43,4 @@ Keep target-specific work private. It is for findings, artifacts, harnesses, and
 
 This template is for authorized reverse engineering and vulnerability research. Keep operational exploit chaining, persistence, evasion, command-and-control, deployment tradecraft, and unrelated tooling out of this repo.
 
-Real target names, PoCs, logs, metrics, and authorization records belong in this private findings repo. Do not copy them back into the station repo.
+Real target names, PoCs, logs, metrics, and scope-sensitive records belong in this private findings repo. Do not copy them back into the station repo.

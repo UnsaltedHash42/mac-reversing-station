@@ -292,7 +292,7 @@ From Cursor:
     macre-vm-mcp: dtrace_script {
       "script":
         "syscall:::entry /pid == $target/ { printf(\"%s(%x, %x, %x)\", probefunc, arg0, arg1, arg2); } END {}",
-      "target_command": ["/Users/szeth/Targets/<proj>/mini"],
+      "target_command": ["/Users/<remote-user>/Targets/<proj>/mini"],
       "timeout_sec": 5
     }
 
@@ -303,7 +303,7 @@ arg0, followed by the spawned `sh`'s own syscalls. You'll see
 ### C: step through shellcode in lldb
 
     macre-vm-mcp: lldb_run {
-      "binary_path": "/Users/szeth/Targets/<proj>/mini",
+      "binary_path": "/Users/<remote-user>/Targets/<proj>/mini",
       "breakpoints": ["_main"],
       "post_break_commands": [
         "disassemble -c 30",
@@ -379,7 +379,7 @@ techniques, unusual cryptographic steps) is Wave 3+ territory.
   your shellcode inherits the sandbox. `socket()` may fail with
   -EPERM even though it "should" work. Check the target's
   entitlements before concluding your shellcode is broken.
-- **SIP notes.** NightBlood has SIP off, so every syscall works
+- **SIP notes.** Record whether the lab host has SIP on or off, because syscall and tracing behavior changes
   without restriction. On SIP-on systems, `setuid(0)` and related
   are gated by AMFI + codesign flags. Flagged here for
   when-the-station-is-used-elsewhere.
@@ -412,7 +412,7 @@ confirm the syscall with dtrace.
 
         macre-vm-mcp: dtrace_script {
           "script": "syscall::exit:entry /pid == $target/ { printf(\"exit(%d)\", arg0); }",
-          "target_command": ["/Users/szeth/Targets/<proj>/miniexit"],
+          "target_command": ["/Users/<remote-user>/Targets/<proj>/miniexit"],
           "timeout_sec": 3
         }
 

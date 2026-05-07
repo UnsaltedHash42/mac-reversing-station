@@ -24,18 +24,20 @@ trigger_phrases:
 
 ## When To Use
 
-- A target app requests privacy-sensitive permissions or brokers access to protected files/devices.
+- Target intake shows privacy-sensitive permissions or brokered access to protected files/devices.
 - The operator needs to reason about prompt attribution, grant recipient, persistent access, or helper-mediated privacy access.
 - A privacy or persistent-authorization pass touches TCC attribution, scoped bookmarks, or file-authority transfer patterns.
 
 ## Workflow
 
-1. Use synthetic data and a dedicated test user.
-2. Confirm privacy and destructive-test hygiene in `LAB_SAFETY.md`.
-3. Read `docs/playbooks/tcc-heavy-consumer-apps.md`.
-4. Map observed privacy surfaces to ontology classes.
-5. Capture prompt/grant/access evidence carefully and save it in the private findings repo.
-6. Update `METRICS.md` even when a prompt or access path is closed as expected behavior.
+1. Confirm authorization as an operator precondition.
+2. Use synthetic data and a dedicated test user.
+3. Confirm privacy and destructive-test hygiene in `LAB_SAFETY.md`.
+4. Inventory the bundle or binary before committing to a family label.
+5. Read `docs/playbooks/tcc-heavy-consumer-apps.md`.
+6. Map observed privacy surfaces to ontology classes.
+7. Capture prompt/grant/access evidence carefully and save it in the private findings repo.
+8. Update `METRICS.md` even when a prompt or access path is closed as expected behavior.
 
 ## Primary Classes
 
@@ -50,5 +52,3 @@ trigger_phrases:
 ## See Also
 
 - `docs/playbooks/tcc-heavy-consumer-apps.md`
-- `Skills/offensive-macos-rediscover-tcc-prompt-attribution/SKILL.md`
-- `Skills/offensive-macos-rediscover-scoped-bookmarks/SKILL.md`

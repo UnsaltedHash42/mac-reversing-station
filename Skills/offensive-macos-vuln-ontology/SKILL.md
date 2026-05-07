@@ -24,7 +24,7 @@ trigger_phrases:
 
 ## When To Use
 
-- A new third-party macOS app has been added to an authorized corpus and needs a structured attack-surface map.
+- A new third-party macOS app has been added to a project corpus and needs a structured attack-surface map.
 - Static analysis finds XPC services, helpers, TCC strings, sandbox/bookmark usage, updater code, launchd services, or code-signing checks and the operator needs hypotheses.
 - A scanner row needs to be classified before triage, deep dive, or reporting.
 
@@ -45,13 +45,15 @@ Do not invent new class names in a findings repo. If a target does not fit an ex
 
 ## Workflow
 
-1. Identify the target family:
-   - Privileged helper or updater.
-   - Enterprise/security agent.
-   - Developer tool.
-   - TCC-heavy consumer app.
-2. Read the relevant family playbook under `docs/playbooks/` if it exists.
-3. Map observed surfaces to ontology IDs:
+1. Start from the target inventory in `CORPUS.md` or the target map under `findings/analysis/`.
+2. Identify observed surfaces before choosing a family label:
+   - XPC services, MachServices, helpers, launchd jobs, updater components.
+   - Privacy/TCC strings, scoped bookmarks, sandbox/app-group stores.
+   - Plugin, package-manager, build, terminal, or external-command surfaces.
+   - Security-agent, management, endpoint, filter, or always-on daemon surfaces.
+3. Assign one or more family labels, or `unknown/mixed` when the inventory does not cleanly match a built-in playbook.
+4. Read the relevant family playbook under `docs/playbooks/` if it exists.
+5. Map observed surfaces to ontology IDs:
    - `VULN-XPC-CLIENT-VALIDATION`
    - `VULN-PRIV-HELPER-AUTHZ`
    - `VULN-UPDATER-TRUST`
@@ -64,8 +66,8 @@ Do not invent new class names in a findings repo. If a target does not fit an ex
    - `VULN-CODESIGN-ENTITLEMENT`
    - `VULN-IPC-CONFUSED-DEPUTY`
    - `VULN-FILE-AUTHORITY-TRANSFER`
-4. Generate hypotheses from the class prompts.
-5. Save target-specific candidates and metrics in the copied findings repo, never in `skillz`.
+6. Generate hypotheses from the class prompts.
+7. Save target-specific candidates and metrics in the copied findings repo, never in `skillz`.
 
 ## Output Shape
 
@@ -74,7 +76,7 @@ For a new target, produce a concise map:
 ```markdown
 ## Attack-Surface Map
 
-- Target family:
+- Target family labels:
 - Observed surfaces:
 - Likely ontology classes:
 - First-pass scanners or manual checks:
@@ -82,6 +84,7 @@ For a new target, produce a concise map:
 - False-positive traps:
 - Evidence to collect:
 - Metrics pass ID:
+- Unknown/mixed notes, if any:
 ```
 
 ## Triage Discipline

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[1]
+REPO = Path(__file__).resolve().parent
 
 
 class TestWorkstationBundleValidator(unittest.TestCase):

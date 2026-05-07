@@ -1,7 +1,7 @@
 # macre-vm-mcp
 
-Stdio MCP server running on the macOS RE lab VM (`NightBlood`). Cursor on
-the workstation reaches it via `ssh NightBlood python -m macre_vm_mcp`.
+Stdio MCP server running on the macOS RE lab host. Cursor on the
+workstation reaches it via `ssh <lab-host> python -m macre_vm_mcp`.
 
 Wraps VM-resident tooling as MCP tools:
 
@@ -41,8 +41,8 @@ Add to `~/.cursor/mcp.json`:
   "args": [
     "-o", "BatchMode=yes",
     "-o", "ServerAliveInterval=30",
-    "NightBlood",
-    "/Users/szeth/.venvs/macre-vm-mcp/bin/python",
+    "<lab-host>",
+    "/Users/<remote-user>/.venvs/macre-vm-mcp/bin/python",
     "-m", "macre_vm_mcp"
   ],
   "env": {}

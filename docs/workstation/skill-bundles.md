@@ -14,7 +14,7 @@ convention and live alongside canonical Cursor skills (symlinked into
 ### Topology
 
 - `Skills/offensive-macos-station-topology` — how the Mac workstation and
-  the NightBlood VM divide labor, which MCP server owns which task, how
+  the primary lab host divide labor, which MCP server owns which task, how
   binaries move between them, and what to do when a piece breaks.
 
 ### Foundations
@@ -71,8 +71,7 @@ the hunt-methodology bundles are appended as they land.
   RE-parallel rule, machine discipline, no-`/tmp` rule, `lsof` discipline,
   and handoff conventions for agent-led research loops.
 - `Skills/offensive-macos-lab-roster` — role-based machine model covering
-  primary, crash-test, cross-platform Apple Silicon, and Intel baseline hosts;
-  NightBlood is the current primary.
+  primary, crash-test, cross-platform Apple Silicon, and Intel baseline hosts.
 - `Skills/offensive-macos-submission-packet` — last-mile checklist for
   packaging verified findings for vendor disclosure, internal remediation,
   red-team reporting, or Apple/platform disclosure while preserving the
@@ -83,6 +82,9 @@ the hunt-methodology bundles are appended as they land.
 Wave 3 expands the station from seed systemic classes into a broader
 finding-rate-driven third-party macOS application research workflow.
 
+- `Skills/offensive-macos-bundle-intake` — bundle-first workflow for turning
+  an app bundle, installer, framework, XPC service, helper, or binary path into
+  target inventory, corpus state, family labels, and first-pass worklist.
 - `Skills/offensive-macos-vuln-ontology` — shared vulnerability-class
   ontology for mapping macOS app surfaces to reusable hunt hypotheses,
   evidence expectations, false-positive traps, and reporting impact.

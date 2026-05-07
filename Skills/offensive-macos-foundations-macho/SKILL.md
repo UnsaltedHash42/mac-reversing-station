@@ -399,7 +399,7 @@ are the primary reason this skill exists.
 
 ## Pitfalls
 
-- **SIP is OFF on NightBlood.** On a SIP-on machine you cannot attach
+- **Record the lab host SIP state.** On a SIP-on machine you cannot attach
   a debugger to any Apple-signed binary, you cannot read from
   `__RESTRICT` segments of them, and `dtrace`'s pid provider is
   heavily neutered for Apple code. Every recipe in this skill assumes
@@ -455,9 +455,9 @@ are the primary reason this skill exists.
         bash scripts/rsync-to-vm.sh ./targets/
 
 5. From Cursor, call `macre-vm-mcp: codesign_inspect` on
-   `/Users/szeth/Targets/<project>/hello`. Confirm: adhoc-signed, no
+   `/Users/<remote-user>/Targets/<project>/hello`. Confirm: adhoc-signed, no
    hardened-runtime flag, no entitlements.
-6. Open `/Users/szeth/Targets/<project>/hello` in Ghidra on the VM
+6. Open `/Users/<remote-user>/Targets/<project>/hello` in Ghidra on the lab host
    (see [`Skills/offensive-macos-tooling-ghidra-headless/SKILL.md`](../offensive-macos-tooling-ghidra-headless/SKILL.md)).
    From Cursor, call `ghidra-mcp: get_assembly_by_name` with name
    `-[Greeter sayHi]` and confirm you see the `objc_msgSend` call.

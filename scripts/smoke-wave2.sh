@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# End-to-end sanity check for the Wave 2 macOS bug-hunting station.
-# Wave 3 structural checks live in scripts/smoke-wave3.sh; pass --live there
-# to include this live NightBlood/Ghidra smoke.
+# End-to-end sanity check for the live macOS bug-hunting station.
+# Structural checks live in scripts/smoke-wave3.sh; pass --live there
+# to include this live lab-host/Ghidra smoke.
 set -u
 
 cd "$(dirname "$0")/.."
@@ -65,11 +65,13 @@ else
     fail "MCP server set is wrong" "edit ~/.cursor/mcp.json"
 fi
 
-section "NightBlood"
-if ssh -o BatchMode=yes -o ConnectTimeout=5 NightBlood true >/dev/null 2>&1; then
-    ok "SSH key auth to NightBlood works"
+HOST="${MACRE_MACHINE:-lab-host}"
+
+section "Lab host"
+if ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" true >/dev/null 2>&1; then
+    ok "SSH key auth to ${HOST} works"
 else
-    fail "NightBlood SSH key auth failed" "bash scripts/install-vm-ssh-key.sh"
+    fail "${HOST} SSH key auth failed" "MACRE_MACHINE=${HOST} bash scripts/install-vm-ssh-key.sh"
 fi
 
 if bash scripts/install-ghidra-host.sh --smoke >/dev/null 2>&1; then

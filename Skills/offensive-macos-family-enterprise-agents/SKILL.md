@@ -22,18 +22,19 @@ trigger_phrases:
 
 ## When To Use
 
-- A target runs always-on agents, root daemons, filters, or management clients.
+- Target intake shows always-on agents, root daemons, filters, or management clients.
 - A red-team or internal assessment needs app-level root cause and remediation evidence.
 - The operator needs to separate expected security-agent power from a boundary failure.
 
 ## Workflow
 
-1. Confirm authorization and engagement constraints in `AUTHORIZATION.md`.
+1. Confirm authorization as an operator precondition.
 2. Confirm lab isolation and test users in `LAB_SAFETY.md`.
 3. Create a corpus pass in `CORPUS.md`.
-4. Read `docs/playbooks/enterprise-security-agents.md`.
-5. Map surfaces to ontology classes and record hypotheses.
-6. Save candidates and metrics in the private findings repo.
+4. Inventory the bundle or binary before committing to a family label.
+5. Read `docs/playbooks/enterprise-security-agents.md`.
+6. Map surfaces to ontology classes and record hypotheses.
+7. Save candidates and metrics in the private findings repo.
 
 ## Primary Classes
 

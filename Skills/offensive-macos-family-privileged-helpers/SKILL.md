@@ -23,18 +23,19 @@ trigger_phrases:
 
 ## When To Use
 
-- A third-party app ships root helpers, updater frameworks, installer tools, or LaunchDaemons.
+- Target intake shows root helpers, updater frameworks, installer tools, or LaunchDaemons.
 - The operator wants a corpus pass over helper/updater surfaces.
 - A Sparkle-style XPC or updater trust issue is suspected.
 
 ## Workflow
 
-1. Confirm scope in `AUTHORIZATION.md` and lab state in `LAB_SAFETY.md`.
+1. Confirm authorization as an operator precondition and lab state in `LAB_SAFETY.md`.
 2. Create a pass in `CORPUS.md`.
-3. Read `docs/playbooks/privileged-helpers-updaters.md`.
-4. Map surfaces to ontology classes with `Skills/offensive-macos-vuln-ontology/SKILL.md`.
-5. Run applicable metadata and Ghidra sweeps.
-6. Add candidates to `INDEX.md` and update `METRICS.md`.
+3. Inventory the bundle or binary before committing to a family label.
+4. Read `docs/playbooks/privileged-helpers-updaters.md`.
+5. Map surfaces to ontology classes with `Skills/offensive-macos-vuln-ontology/SKILL.md`.
+6. Run applicable metadata and Ghidra sweeps.
+7. Add candidates to `INDEX.md` and update `METRICS.md`.
 
 ## Primary Classes
 
@@ -50,4 +51,3 @@ trigger_phrases:
 
 - `docs/playbooks/privileged-helpers-updaters.md`
 - `docs/ontology/macos-vulnerability-classes.md`
-- `Skills/offensive-macos-rediscover-sparkle-xpc/SKILL.md`

@@ -1,6 +1,6 @@
 # Station Topology — Reference
 
-This is the reference map for the macOS bug-hunting station. The user-facing workflow lives in `docs/operator-guide.md`.
+This is the reference map for the macOS reversing station. The user-facing workflow lives in `README.md`.
 
 ## Diagram
 
@@ -9,12 +9,12 @@ flowchart LR
     subgraph Workstation["Mac Workstation - cockpit"]
         Cursor["Cursor IDE + Agent"]
         MCP["~/.cursor/mcp.json"]
-        Skillz["~/tools/skillz"]
-        Findings["~/re/<program> findings repos"]
+        Template["clean station checkout"]
+        Project["~/re/<project> project clone"]
     end
 
     subgraph Lab["Lab machines"]
-        Primary["primary: NightBlood<br/>Ghidra 12.0.4<br/>ghidra-mcp<br/>macre-vm-mcp<br/>Hopper manual only"]
+        Primary["primary lab host<br/>Ghidra<br/>ghidra-mcp<br/>macre-vm-mcp"]
         Crash["crash-test<br/>operator adds"]
         Cross["cross-platform Apple Silicon<br/>operator adds"]
         Intel["intel-baseline<br/>operator adds"]
@@ -23,8 +23,8 @@ flowchart LR
     Cursor --> MCP
     MCP -->|"ssh stdio ghidra-mcp"| Primary
     MCP -->|"ssh stdio macre-vm-mcp"| Primary
-    Cursor --> Skillz
-    Cursor --> Findings
+    Cursor --> Template
+    Cursor --> Project
     Cursor -.->|"ssh direct"| Crash
     Cursor -.->|"ssh direct"| Cross
     Cursor -.->|"ssh direct"| Intel
@@ -32,14 +32,14 @@ flowchart LR
 
 ## Host Roles
 
-| Role | Current Alias | Purpose |
+| Role | Alias | Purpose |
 |------|---------------|---------|
-| primary | `NightBlood` | Static analysis, Ghidra headless, routine XPC/log/debug probes |
+| primary | `<lab-host>` | Static analysis, Ghidra headless, routine XPC/log/debug probes |
 | crash-test | operator to fill | Panics, destructive daemon tests, fuzzing |
 | cross-platform | operator to fill | Different Apple Silicon generation verification |
 | intel-baseline | operator to fill | x86_64/macOS comparison |
 
-NightBlood is the only required host for Wave 2. The other roles improve evidence quality and submission confidence.
+The primary lab host is the only required remote host. The other roles improve evidence quality and reduce risk during destructive testing.
 
 ## MCP Servers
 
@@ -53,21 +53,21 @@ Cursor launches:
   "args": [
     "-o", "BatchMode=yes",
     "-o", "ServerAliveInterval=30",
-    "NightBlood",
-    "/Users/szeth/bin/ghidra-mcp-launch"
+    "<lab-host>",
+    "/Users/<remote-user>/bin/ghidra-mcp-launch"
   ],
   "env": {}
 }
 ```
 
-NightBlood components:
+Primary lab-host components:
 
-- Java: `/Users/szeth/Applications/jdk-21.0.11+10/Contents/Home`
-- Ghidra: `/Users/szeth/Applications/ghidra_12.0.4_PUBLIC`
-- MCP source: `/Users/szeth/tools/ghidra-headless-mcp`
-- MCP venv: `/Users/szeth/.venvs/ghidra-headless-mcp`
-- Hunt scripts: `/Users/szeth/ghidra-scripts`
-- Ghidra projects: `/Users/szeth/ghidra-projects`
+- Java: `/Users/<remote-user>/Applications/jdk-21.0.11+10/Contents/Home`
+- Ghidra: `/Users/<remote-user>/Applications/ghidra_12.0.4_PUBLIC`
+- MCP source: `/Users/<remote-user>/tools/ghidra-headless-mcp`
+- MCP venv: `/Users/<remote-user>/.venvs/ghidra-headless-mcp`
+- Hunt scripts: `/Users/<remote-user>/ghidra-scripts`
+- Ghidra projects: `/Users/<remote-user>/ghidra-projects`
 
 Verification:
 
@@ -85,8 +85,8 @@ Cursor launches:
   "args": [
     "-o", "BatchMode=yes",
     "-o", "ServerAliveInterval=30",
-    "NightBlood",
-    "/Users/szeth/.venvs/macre-vm-mcp/bin/python",
+    "<lab-host>",
+    "/Users/<remote-user>/.venvs/macre-vm-mcp/bin/python",
     "-m", "macre_vm_mcp"
   ],
   "env": {}
@@ -99,32 +99,32 @@ Use it for LLDB, DTrace, codesign, entitlements, launchd, and logs.
 
 Hopper is retired from the agent MCP loop. The old Hopper bridge entry should be absent from `~/.cursor/mcp.json`.
 
-Hopper may remain installed on NightBlood for manual GUI depth work. Do not make agent workflows depend on Hopper menus, plugin injection, or document-loaded state.
+Hopper or another GUI decompiler may remain installed on the lab host for manual depth work. Do not make agent workflows depend on GUI menus, plugin injection, or document-loaded state.
 
 ## Files That Define The Station
 
 | Path | Purpose |
 |------|---------|
-| `scripts/install-ghidra-host.sh` | Install/check/smoke Ghidra + headless MCP on NightBlood |
-| `ghidra-scripts/` | Read-only hunt scripts synced to NightBlood |
+| `scripts/install-ghidra-host.sh` | Install/check/smoke Ghidra + headless MCP on the primary lab host |
+| `ghidra-scripts/` | Read-only hunt scripts synced to the lab host |
 | `macre-vm-mcp/` | VM-side dynamic tooling MCP server |
-| `templates/findings-repo/` | Private research repo starter with authorization, lab safety, corpus, metrics, and reporting templates |
+| `templates/findings-repo/` | Private research repo starter with lab safety, corpus, metrics, reporting, and handoff templates |
 | `docs/ontology/` | Shared macOS vulnerability-class ontology |
 | `docs/playbooks/` | Third-party app family playbooks |
 | `Skills/offensive-macos-*` | Cursor skills for tooling, hunts, ontology, playbooks, discipline, lab, and reporting |
-| `docs/operator-guide.md` | How to use the station |
+| `README.md` | How to set up and operate the station |
 
 ## Health Checks
 
 ```bash
-ssh -o BatchMode=yes NightBlood true
+ssh -o BatchMode=yes <lab-host> true
 python3 -m json.tool ~/.cursor/mcp.json >/dev/null
 scripts/install-ghidra-host.sh --smoke
 tests/ghidra-scripts/smoke.sh
 python3 scripts/validate_workstation_bundles.py
 ```
 
-Wave 3 adds `scripts/smoke-wave3.sh` for structural station-release checks. Its live mode may call the NightBlood and Ghidra smoke paths above.
+`scripts/smoke-wave3.sh` runs structural station checks. Its live mode may call the lab-host and Ghidra smoke paths above.
 
 ## Failure Boundaries
 

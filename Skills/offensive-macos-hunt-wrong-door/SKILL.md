@@ -32,10 +32,10 @@ trigger_phrases:
 
 | Step | Surface | How |
 |------|---------|-----|
-| Static script sweep | NightBlood via Cursor | `ghidra-mcp` + `/Users/szeth/ghidra-scripts/scan_wrong_door.py` |
-| Entitlement and launchd metadata | NightBlood | `macre-vm-mcp` entitlement/codesign/launchd tools |
+| Static script sweep | lab host via Cursor | `ghidra-mcp` + `/Users/<remote-user>/ghidra-scripts/scan_wrong_door.py` |
+| Entitlement and launchd metadata | lab host | `macre-vm-mcp` entitlement/codesign/launchd tools |
 | UID 501 reachability probe | crash-test or primary | Build/run a small ObjC XPC harness as unprivileged user |
-| Decompile delegate logic | NightBlood via Cursor | `function.by_name`, `decomp.function`, `ghidra.script` |
+| Decompile delegate logic | lab host via Cursor | `function.by_name`, `decomp.function`, `ghidra.script` |
 | Writeup state | Findings repo | Save TSV and candidate notes under `findings/analysis/` |
 
 Full topology: `Skills/offensive-macos-station-topology/SKILL.md`.
@@ -63,13 +63,13 @@ Known pattern sources included daemons with multi-listener splits, post-connecti
 1. Open the target binary with `ghidra-mcp`:
 
    ```text
-   program.open(path="/path/to/daemon", project_location="/Users/szeth/ghidra-projects", project_name="wrong-door-<target>", read_only=true, update_analysis=true)
+   program.open(path="/path/to/daemon", project_location="/Users/<remote-user>/ghidra-projects", project_name="wrong-door-<target>", read_only=true, update_analysis=true)
    ```
 
 2. Run:
 
    ```text
-   ghidra.script(session_id="<session>", path="/Users/szeth/ghidra-scripts/scan_wrong_door.py", script_args=[])
+   ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_wrong_door.py", script_args=[])
    ```
 
 3. Save TSV stdout:

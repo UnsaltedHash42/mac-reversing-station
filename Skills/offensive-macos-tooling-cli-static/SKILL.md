@@ -40,7 +40,7 @@ trigger_phrases:
 
 Most tools (`otool`, `nm`, `lipo`, `strings`, `codesign`, `spctl`,
 `plutil`, `file`, `class-dump`, `dyld_info`) exist on **both** the
-workstation and NightBlood. Default to workstation for speed; use
+workstation and the configured lab host. Default to workstation for speed; use
 `macre-vm-mcp` when the binary under analysis only lives on the VM
 (e.g. a shared-cache extraction, or a system binary with
 version-specific paths).
@@ -273,7 +273,7 @@ the wrong architecture or takes too long.
 
 (interactive SSH, not MCP — scans a lot):
 
-    ssh NightBlood '
+    ssh <lab-host> '
       find /Applications -type f -perm -u+x 2>/dev/null | while read b; do
         if file "$b" 2>/dev/null | grep -q Mach-O; then
           rpaths=$(otool -l "$b" 2>/dev/null | awk "/LC_RPATH/{f=1} f && /path /{print; f=0}")

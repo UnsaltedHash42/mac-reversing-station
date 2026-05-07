@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or verify the Ghidra host side of the macOS bug-hunting station.
 #
-# This script targets the current primary lab machine, NightBlood. It installs:
+# This script targets the current primary lab machine. It installs:
 # - Eclipse Temurin JDK 21 under ~/Applications/
 # - Ghidra 12.0.4 under ~/Applications/
 # - mrphrazer/ghidra-headless-mcp pinned from main under ~/tools/ghidra-headless-mcp/
@@ -10,8 +10,8 @@
 # Idempotent. Safe to re-run.
 set -euo pipefail
 
-HOST="${MACRE_MACHINE:-NightBlood}"
-REMOTE_HOME="/Users/szeth"
+HOST="${MACRE_MACHINE:-lab-host}"
+REMOTE_HOME="${MACRE_REMOTE_HOME:-/Users/<remote-user>}"
 REMOTE_APPS="${REMOTE_HOME}/Applications"
 REMOTE_TOOLS="${REMOTE_HOME}/tools/ghidra-mcp"
 REMOTE_HEADLESS_SRC="${REMOTE_HOME}/tools/ghidra-headless-mcp"
@@ -51,21 +51,23 @@ usage() {
     printf 'Usage: %s [--install|--check|--smoke]\n' "$(basename "$0")"
     printf '\n'
     printf 'Environment:\n'
-    printf '  MACRE_MACHINE   SSH alias for the Ghidra host (default: NightBlood)\n'
+    printf '  MACRE_MACHINE   SSH alias for the Ghidra host (default: lab-host)\n'
+    printf '  MACRE_REMOTE_HOME remote home path (default: /Users/<remote-user>)\n'
 }
 
 remote_check() {
-    ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" /bin/bash -s <<'REMOTE_CHECK'
+    ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" "MACRE_REMOTE_HOME='${REMOTE_HOME}' /bin/bash -s" <<'REMOTE_CHECK'
 set -euo pipefail
+REMOTE_HOME="${MACRE_REMOTE_HOME}"
 fail=0
 for path in \
-    "/Users/szeth/Applications/jdk-21.0.11+10/Contents/Home/bin/java" \
-    "/Users/szeth/Applications/ghidra_12.0.4_PUBLIC/support/analyzeHeadless" \
-    "/Users/szeth/tools/ghidra-headless-mcp/ghidra_headless_mcp.py" \
-    "/Users/szeth/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" \
-    "/Users/szeth/bin/ghidra-mcp-launch" \
-    "/Users/szeth/bin/ghidra-mcp-server-start" \
-    "/Users/szeth/bin/ghidra-mcp-server-status"
+    "${REMOTE_HOME}/Applications/jdk-21.0.11+10/Contents/Home/bin/java" \
+    "${REMOTE_HOME}/Applications/ghidra_12.0.4_PUBLIC/support/analyzeHeadless" \
+    "${REMOTE_HOME}/tools/ghidra-headless-mcp/ghidra_headless_mcp.py" \
+    "${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" \
+    "${REMOTE_HOME}/bin/ghidra-mcp-launch" \
+    "${REMOTE_HOME}/bin/ghidra-mcp-server-start" \
+    "${REMOTE_HOME}/bin/ghidra-mcp-server-status"
 do
     if [[ ! -e "${path}" ]]; then
         echo "MISSING: ${path}" >&2
@@ -77,27 +79,30 @@ if [[ "${fail}" -ne 0 ]]; then
     exit 1
 fi
 
-export JAVA_HOME="/Users/szeth/Applications/jdk-21.0.11+10/Contents/Home"
+export JAVA_HOME="${REMOTE_HOME}/Applications/jdk-21.0.11+10/Contents/Home"
 export PATH="${JAVA_HOME}/bin:${PATH}"
 "${JAVA_HOME}/bin/java" -version 2>&1 | sed -n '1p'
-"/Users/szeth/Applications/ghidra_12.0.4_PUBLIC/support/analyzeHeadless" 2>&1 | sed -n '1,3p' || true
-"/Users/szeth/bin/ghidra-mcp-launch" --version
+"${REMOTE_HOME}/Applications/ghidra_12.0.4_PUBLIC/support/analyzeHeadless" 2>&1 | sed -n '1,3p' || true
+"${REMOTE_HOME}/bin/ghidra-mcp-launch" --version
 REMOTE_CHECK
 }
 
 remote_smoke() {
-    ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" /bin/bash -s <<'REMOTE_SMOKE'
+    ssh -o BatchMode=yes -o ConnectTimeout=5 "${HOST}" "MACRE_REMOTE_HOME='${REMOTE_HOME}' /bin/bash -s" <<'REMOTE_SMOKE'
 set -euo pipefail
-"/Users/szeth/bin/ghidra-mcp-launch" --version
-"/Users/szeth/.venvs/ghidra-headless-mcp/bin/python" -m py_compile "/Users/szeth/tools/ghidra-headless-mcp/ghidra_headless_mcp.py"
-"/Users/szeth/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" --fake-backend --version
-"/Users/szeth/.venvs/ghidra-headless-mcp/bin/python" - <<'PY'
+REMOTE_HOME="${MACRE_REMOTE_HOME}"
+"${REMOTE_HOME}/bin/ghidra-mcp-launch" --version
+"${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/python" -m py_compile "${REMOTE_HOME}/tools/ghidra-headless-mcp/ghidra_headless_mcp.py"
+"${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" --fake-backend --version
+"${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/python" - <<'PY'
 import json
+import os
 import subprocess
 import time
 
+remote_home = os.environ["MACRE_REMOTE_HOME"]
 process = subprocess.Popen(
-    ["/Users/szeth/bin/ghidra-mcp-launch"],
+    [f"{remote_home}/bin/ghidra-mcp-launch"],
     stdin=subprocess.PIPE,
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
@@ -163,7 +168,7 @@ opened = call_tool(
     "program.open",
     {
         "path": "/bin/ls",
-        "project_location": "/Users/szeth/ghidra-projects",
+        "project_location": f"{remote_home}/ghidra-projects",
         "project_name": "wave2-smoke",
         "read_only": True,
         "update_analysis": True,
@@ -192,7 +197,7 @@ script = call_tool(
     "ghidra.script",
     {
         "session_id": session_id,
-        "path": "/Users/szeth/ghidra-scripts/scan_wrong_door.py",
+        "path": f"{remote_home}/ghidra-scripts/scan_wrong_door.py",
         "script_args": [],
     },
     120,
@@ -379,36 +384,38 @@ SCRIPT
 write_file "${REMOTE_BIN}/ghidra-mcp-server-status" 0755 <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-exec "/Users/szeth/bin/ghidra-mcp-launch" --version
+REMOTE_HOME="${MACRE_REMOTE_HOME:-${HOME}}"
+exec "${REMOTE_HOME}/bin/ghidra-mcp-launch" --version
 SCRIPT
 
 write_file "${REMOTE_BIN}/ghidra-mcp-launch" 0755 <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
-export JAVA_HOME="/Users/szeth/Applications/jdk-21.0.11+10/Contents/Home"
+REMOTE_HOME="${MACRE_REMOTE_HOME:-${HOME}}"
+export JAVA_HOME="${REMOTE_HOME}/Applications/jdk-21.0.11+10/Contents/Home"
 export PATH="${JAVA_HOME}/bin:${PATH}"
-GHIDRA_HOME="/Users/szeth/Applications/ghidra_12.0.4_PUBLIC"
+GHIDRA_HOME="${REMOTE_HOME}/Applications/ghidra_12.0.4_PUBLIC"
 
 case "${1:-}" in
     --version)
         "${JAVA_HOME}/bin/java" -version 2>&1 | sed -n '1p'
-        "/Users/szeth/.venvs/ghidra-headless-mcp/bin/python" --version
+        "${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/python" --version
         printf 'Ghidra 12.0.4\nghidra-headless-mcp b9c491a6383dbc68c581e7fed16341ac47e7faba\n'
-        "/Users/szeth/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" --version
+        "${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" --version
         exit 0
         ;;
     --check)
-        exec "/Users/szeth/bin/ghidra-mcp-server-status"
+        exec "${REMOTE_HOME}/bin/ghidra-mcp-server-status"
         ;;
     --server-start)
-        exec "/Users/szeth/bin/ghidra-mcp-server-start"
+        exec "${REMOTE_HOME}/bin/ghidra-mcp-server-start"
         ;;
     --server-stop)
-        exec "/Users/szeth/bin/ghidra-mcp-server-stop"
+        exec "${REMOTE_HOME}/bin/ghidra-mcp-server-stop"
         ;;
 esac
 
-exec "/Users/szeth/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" \
+exec "${REMOTE_HOME}/.venvs/ghidra-headless-mcp/bin/ghidra-headless-mcp" \
     --ghidra-install-dir "${GHIDRA_HOME}" \
     "$@"
 SCRIPT

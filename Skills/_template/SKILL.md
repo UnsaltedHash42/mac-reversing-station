@@ -63,7 +63,7 @@ class exercises.
 
 ## Pitfalls
 
-- SIP state gotchas (SIP is OFF on NightBlood; note what changes if SIP is on elsewhere)
+- SIP state gotchas (record the lab host's SIP state; note what changes if SIP is on elsewhere)
 - AMFI / codesigning gotchas
 - macOS version drift (current lab VM: macOS 26.4.1 arm64)
 - Common false positives or confusing Hopper output

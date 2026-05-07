@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Idempotent one-shot: deploy workstation's ed25519 public key into
-# szeth@NightBlood:~/.ssh/authorized_keys so MCP servers can invoke ssh
-# non-interactively.
+# Idempotent one-shot: deploy the workstation's ed25519 public key into
+# the primary lab host's ~/.ssh/authorized_keys so MCP servers can invoke
+# ssh non-interactively.
 #
 # Requires: /usr/bin/expect (ships with macOS), an existing ~/.ssh/id_ed25519.pub,
-# and a reachable NightBlood host alias in ~/.ssh/config.
+# and a reachable lab host alias in ~/.ssh/config.
 #
-# Usage: scripts/install-vm-ssh-key.sh [password]
+# Usage: MACRE_MACHINE=<lab-host> scripts/install-vm-ssh-key.sh [password]
 #        Falls back to the default lab password if none is passed.
 set -euo pipefail
 
 PUBKEY_PATH="${HOME}/.ssh/id_ed25519.pub"
-HOST_ALIAS="NightBlood"
+HOST_ALIAS="${MACRE_MACHINE:-lab-host}"
 VM_PASSWORD="${1:-offsec}"
 
 if [[ ! -f "${PUBKEY_PATH}" ]]; then
@@ -69,6 +69,6 @@ if ssh -o BatchMode=yes -o PreferredAuthentications=publickey -o ConnectTimeout=
     echo "OK: non-interactive key auth to ${HOST_ALIAS} works."
 else
     echo "FAIL: non-interactive key auth still not working." >&2
-    echo "Check ~/.ssh/config NightBlood block (PubkeyAuthentication must be yes), then re-run." >&2
+    echo "Check ~/.ssh/config for ${HOST_ALIAS} (PubkeyAuthentication must be yes), then re-run." >&2
     exit 4
 fi

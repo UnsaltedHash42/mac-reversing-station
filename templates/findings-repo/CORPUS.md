@@ -1,16 +1,47 @@
 # Corpus
 
-Track the authorized targets and surfaces for each research pass.
+Agent-maintained state for target intake, surface coverage, family labels, and pass progress. Authorization is an operator precondition; record only project-specific scope notes needed for the investigation.
 
 ## Corpus Passes
 
-| Pass ID | Date | Target Family | Corpus Slice | Authorization Ref | Status | Metrics Row |
-|---------|------|---------------|--------------|-------------------|--------|-------------|
+| Pass ID | Date | Target Family Labels | Corpus Slice | Scope Notes | Status | Metrics Row |
+|---------|------|----------------------|--------------|-------------|--------|-------------|
 
 ## Target Inventory
 
-| Target ID | App / Component | Version | Source | Family | Primary Surfaces | Notes |
-|-----------|-----------------|---------|--------|--------|------------------|-------|
+| Target ID | App / Component | Version | Source | Family Labels | Primary Surfaces | Notes |
+|-----------|-----------------|---------|--------|---------------|------------------|-------|
+
+## Discovered Components
+
+Agent-maintained component inventory. Keep this summarized; large generated maps belong in `findings/analysis/`.
+
+| Target ID | Component | Kind | Path | Notes |
+|-----------|-----------|------|------|-------|
+
+## Surface Classification
+
+| Target ID | Pass ID | Surfaces | Ontology Candidates | Evidence Path | Notes |
+|-----------|---------|----------|---------------------|---------------|-------|
+
+## Family Labels And Routing
+
+Family labels are evidence-derived and may be multi-valued. Use `unknown/mixed` when the inventory does not cleanly match an existing playbook.
+
+| Target ID | Family Labels | Confidence | Unknown / Mixed Notes | Next Playbook |
+|-----------|---------------|------------|-----------------------|---------------|
+
+## Lab Host Path Mapping
+
+Use this after syncing targets to the lab host for Ghidra, LLDB, DTrace, logs, or dynamic checks.
+
+| Target ID | Local Path | Remote Path | Synced At | Notes |
+|-----------|------------|-------------|-----------|-------|
+
+## Current Hypotheses And Worklist
+
+| Pass ID | Hypothesis / Task | Evidence So Far | Next Action | Status |
+|---------|-------------------|-----------------|-------------|--------|
 
 ## Surface Checklist
 

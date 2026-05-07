@@ -296,7 +296,7 @@ verify it at runtime.
 4. Demangle one: pick any `$s...` symbol and
    `xcrun swift demangle '<symbol>'`.
 5. Sync into project `./targets/` and `bash scripts/rsync-to-vm.sh`.
-6. Open `/Users/szeth/Targets/<project>/swhello` in Ghidra on the VM.
+6. Open `/Users/<remote-user>/Targets/<project>/swhello` in Ghidra on the lab host.
 7. From Cursor:
 
         ghidra-mcp: get_pseudocode_by_name {"name": "main.Greeter.sayHi() -> ()"}

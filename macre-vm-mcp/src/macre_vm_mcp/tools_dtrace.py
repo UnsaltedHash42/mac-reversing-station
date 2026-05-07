@@ -1,6 +1,6 @@
 """DTrace tools — run D-scripts against a target binary or PID.
 
-Note on SIP: the lab VM (NightBlood) has SIP disabled, so DTrace can
+Note on SIP: if the configured lab host has SIP disabled, DTrace can
 instrument system binaries freely. On a SIP-on machine, DTrace providers
 for Apple-signed binaries are restricted; the skill docs call this out.
 """

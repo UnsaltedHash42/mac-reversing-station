@@ -4,8 +4,8 @@ Metrics make research throughput visible. A pass with no confirmed findings can 
 
 ## Pass Funnel
 
-| Pass ID | Target Family | Apps | Major Binaries | Surfaces Enumerated | Candidates | Closed | Hold | Blocked | Escalated | Confirmed | Report Ready | Notes |
-|---------|---------------|------|----------------|---------------------|------------|--------|------|---------|-----------|-----------|--------------|-------|
+| Pass ID | Target Family Labels | Targets | Major Binaries | Surfaces Enumerated | Candidates | Closed | Hold | Blocked | Escalated | Confirmed | Report Ready | Notes |
+|---------|----------------------|---------|----------------|---------------------|------------|--------|------|---------|-----------|-----------|--------------|-------|
 
 ## Closure Quality
 
@@ -39,7 +39,7 @@ Blocker types:
 
 ## Family Coverage Rollup
 
-Use this section when you want to see which app families have been exercised.
+Use this section when you want to see which evidence-derived app family labels have been exercised. Add new family labels only after repeated projects prove they need a distinct workflow.
 
 | Target Family | Pass ID | Status | Notes |
 |---------------|---------|--------|-------|
