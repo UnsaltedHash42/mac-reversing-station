@@ -1,0 +1,30 @@
+# <Program Name>
+
+Private macOS vulnerability research program.
+
+## Scope
+
+- Targets:
+- Authorized environment:
+- Exclusions:
+
+## Current Focus
+
+- Hunt class:
+- Target binaries:
+- Active hypothesis:
+
+## Quick Commands
+
+```bash
+bash scripts/smoke-findings-repo.sh
+```
+
+## Station Skills
+
+Use the station skills from `~/tools/skillz/Skills/`, especially:
+
+- `offensive-macos-tooling-ghidra-headless`
+- `offensive-macos-agent-discipline`
+- `offensive-macos-lab-roster`
+- `offensive-macos-submission-packet`

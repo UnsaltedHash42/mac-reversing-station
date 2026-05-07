@@ -1,0 +1,37 @@
+---
+description: Engineering-mode workstation defaults (internal tooling, libraries, frameworks)
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Engineering mode (`REPO_MODE=engineering`)
+
+## Authority and scope
+
+- This repository’s primary posture is **building and maintaining internal software**.
+- Respect the operator’s **`REPO_MODE`** value and README “Repo mode” section—they must agree.
+- **Platform details** (Windows vs macOS toolchain, binaries under analysis elsewhere) belong in prose notes, never as substitutions for `REPO_MODE`.
+
+## Methodology density
+
+- Default to **high-quality engineering**: clarity, diagnostics, observability hooks, reviewer-friendly diffs.
+- Lightweight security-adjacent thinking is okay when implementing features (instrumentation, parsers, parsers of untrusted formats), but **do not implicitly shift into exploit-development curricula** unless the operator attaches methodology from `Skills/`.
+- **Attach-only by default**: deep offensive syllabi (`exploit-development`, `shellcode`, `edr-evasion`, `advanced-redteam`, etc.). When uncertain, prefer asking what `SKILL.md` should be activated.
+
+## Channel boundary (assistant)
+
+- Provide **architecture, tooling, instrumentation, reproduction steps, defenses, mitigation mapping, and methodological guidance**.
+- Refuse tasks that solicit **hands-on authoring of operational exploits/implants/malware** for real targets in this workspace. Operational payloads belong in operator-controlled harnesses outside this channel.
+
+## Skills usage
+
+- When deep methodology is required, the operator should **attach** the relevant `SKILL.md` from this station’s `Skills/` tree.
+- Never assume a skill is active just because the topic was mentioned once.
+
+## Optional platform hint (uncomment and edit if useful)
+
+<!-- Secondary context only; does not change `REPO_MODE`.
+- Primary toolchain: Windows / .NET / C++ services (example)
+- Secondary analysis: macOS reversing happens in separate `analysis`-tagged repos
+-->

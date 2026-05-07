@@ -1,0 +1,16 @@
+# Machine Roster
+
+| Alias | Role | Host/IP | User | Chip | OS Build | SIP | Allowed Tests |
+|-------|------|---------|------|------|----------|-----|---------------|
+| NightBlood | primary | <configured in ~/.ssh/config> | szeth | Apple Silicon VM | <fill> | off | static RE, Ghidra, routine XPC probes |
+| <CrashTest> | crash-test | <fill> | <fill> | <fill> | <fill> | <fill> | panics, daemon DoS, fuzzing |
+| <CrossPlatform> | cross-platform | <fill> | <fill> | <fill> | <fill> | usually on | Apple Silicon generation comparison |
+| <IntelBaseline> | intel-baseline | <fill> | <fill> | Intel | <fill> | usually on | x86_64/macOS comparison |
+
+## Add A Machine
+
+1. Add SSH alias to `~/.ssh/config`.
+2. Run key setup from station repo.
+3. Verify `ssh -o BatchMode=yes <alias> 'uname -m; sw_vers -productVersion'`.
+4. Record reboot/autologin behavior.
+5. Mark which tests are allowed.

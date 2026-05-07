@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macre-vm-mcp"
+version = "0.1.0"
+description = "MCP server for the macOS RE station's VM-side tooling (lldb, dtrace, codesign, spctl, log, launchctl)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "bwt" }]
+license = { text = "MIT" }
+dependencies = [
+    "fastmcp>=2.0,<4.0",
+]
+
+[project.scripts]
+macre-vm-mcp = "macre_vm_mcp.server:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

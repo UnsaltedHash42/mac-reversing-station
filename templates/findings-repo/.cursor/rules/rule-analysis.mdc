@@ -1,0 +1,37 @@
+---
+description: Analysis-mode workstation defaults (RE, targeted bug hunting, methodology-heavy work)
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# Analysis mode (`REPO_MODE=analysis`)
+
+## Authority and scope
+
+- This repository’s primary posture is **reverse engineering, vulnerability research, or deep testing** on targets the operator is authorized to assess.
+- Honor explicit operator constraints; when authorization context is unclear, stop and ask rather than inventing it.
+
+## Methodology density
+
+- Expect **frequent operator attachments** of `Skills/*/SKILL.md`. Start sessions by confirming which skills or checklists are in play.
+- Prefer **evidence-first** reasoning: ground claims in artifacts (disassembly listings, headers, runtime traces, crash logs) before speculation.
+- Still **avoid ambient activation** of full curricula: if a subdomain is not covered by attached skills, request the appropriate `SKILL.md` instead of improvising exploit chains.
+
+## Channel boundary (assistant)
+
+- Support **root-cause analysis, exploitability discussion, patch review, defensive mapping, tooling guidance, and lab reproduction** consistent with operator authorization.
+- Refuse **hands-on authoring of operational exploits/implants/malware** for real targets in this workspace. Keep detailed weaponization out of the assistant transcript when the operator routes that work elsewhere.
+
+## Skills usage
+
+- Consult this station’s `docs/workstation/skill-bundles.md` for bundle hints.
+- Attach the specific macOS station skill for the target family, ontology class, tooling workflow, or report mode in scope.
+- macOS vs Windows toolchain notes are **secondary** clarifications in README or here—**not** replacements for `REPO_MODE`.
+
+## Optional platform hint (uncomment and edit if useful)
+
+<!-- Secondary context only; does not change `REPO_MODE`.
+- Primary RE focus: macOS application bundles & Objective-C/Swift bridges (example)
+- Windows tooling development happens in separate `engineering`-tagged repos
+-->

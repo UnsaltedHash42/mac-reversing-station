@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.mobileprovision
+.tmp/
+DerivedData/
+build/
+*.dSYM/
+artifacts/*.panic
+artifacts/*.ips
+artifacts/*.crash
+artifacts/*.spindump

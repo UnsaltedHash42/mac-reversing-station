@@ -1,0 +1,62 @@
+# Research Handoff — <YYYY-MM-DD>
+
+## Read First
+
+- `REPO_MODE`
+- `AUTHORIZATION.md`
+- `LAB_SAFETY.md`
+- `CORPUS.md`
+- `METRICS.md`
+- `INDEX.md`
+- `SUBMISSION_TRIAGE.md`
+- `machines.md`
+- This handoff
+
+## Active Pass
+
+- Pass ID:
+- Target family:
+- Corpus slice:
+- Ontology classes:
+- Report mode, if known:
+
+## Current Hypothesis
+
+<What we believe and why.>
+
+## Last Known Good State
+
+- Pass ID:
+- Machine:
+- Target:
+- Command:
+- Artifact:
+
+## Last Failure
+
+- L1-L6 classification:
+- Symptom:
+- Evidence:
+- What not to retry:
+
+## Active Findings
+
+| ID | Pass ID | Status | Next Action |
+|----|---------|--------|-------------|
+
+## Metrics Update Needed
+
+- [ ] `METRICS.md` candidate counts updated
+- [ ] Closed rows have rationale
+- [ ] Blockers classified
+- [ ] Artifacts linked from `INDEX.md`
+
+## Open Questions
+
+- [ ] 
+
+## Next Session Start
+
+1. 
+2. 
+3. 

@@ -1,0 +1,68 @@
+# macOS / editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Local secrets and machine-specific config
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+credentials.json
+
+# Local reverse-engineering work products
+artifacts/
+findings/
+targets/
+ghidra-projects/
+*.ghidra
+*.gpr
+*.rep
+*.log
+*.crash
+*.ips
+*.dSYM/
+
+# Keep real target research in private findings repos, not this station repo.
+re/
+findings-repo/
+
+# Keep placeholder directories in the starter template.
+!templates/
+!templates/findings-repo/
+!templates/findings-repo/artifacts/
+!templates/findings-repo/artifacts/.gitkeep
+!templates/findings-repo/findings/
+!templates/findings-repo/findings/analysis/
+!templates/findings-repo/findings/analysis/.gitkeep
+!templates/findings-repo/findings/reports/
+!templates/findings-repo/findings/reports/.gitkeep
+!templates/findings-repo/tools/
+!templates/findings-repo/tools/custom/
+!templates/findings-repo/tools/custom/.gitkeep
+
+# Large/local source material
+*.pdf
+
+# Build and package outputs
+dist/
+build/
+*.egg-info/
+node_modules/
