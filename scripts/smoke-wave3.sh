@@ -100,6 +100,15 @@ else
     fail "investigation recipe registry failed" "python3 scripts/validate-recipes.py --root ."
 fi
 
+section "Setup scripts"
+if bash scripts/setup-keep.sh --help >/dev/null && \
+   bash scripts/init-project.sh --help >/dev/null && \
+   python3 scripts/configure-cursor-mcp.py --host lab-host --remote-home /Users/remote --dry-run >/dev/null; then
+    ok "setup scripts expose help and MCP config dry-run"
+else
+    fail "setup script smoke failed" "check scripts/setup-keep.sh, scripts/init-project.sh, and scripts/configure-cursor-mcp.py"
+fi
+
 section "Findings template"
 if bash templates/findings-repo/scripts/smoke-findings-repo.sh >/dev/null 2>&1; then
     ok "findings-repo template smokes"

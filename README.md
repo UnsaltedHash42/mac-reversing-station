@@ -34,28 +34,106 @@ Your lab host can be named anything. In this repo, examples use `<lab-host>` and
 
 Do not push target apps, private PoCs, logs, screenshots, crash reports, scope-sensitive records, customer data, or client artifacts back to a public template repo. Keep that work in your private project clone.
 
-## One-Time Environment Setup
+## Requirements
 
-Do this once per workstation/lab-host pair.
+You need two machines or roles:
 
-### 1. Pick Local And Remote Names
+- **Workstation:** the Mac where you run Cursor and keep project clones.
+- **Lab host:** a macOS machine or VM reachable by SSH. It runs Ghidra, `ghidra-mcp`, `macre-vm-mcp`, LLDB, DTrace, and target binaries when dynamic testing is allowed.
 
-Choose where station projects live locally:
+Workstation requirements:
+
+- macOS with `bash`, `python3`, `git`, `ssh`, `rsync`, and `unzip`.
+- Cursor installed.
+- An SSH alias for the lab host in `~/.ssh/config`.
+
+Lab-host requirements:
+
+- macOS on Apple Silicon for the default automated install path.
+- SSH enabled.
+- A user account that can install tools under its own home directory.
+- `/opt/homebrew/bin/python3` for `macre-vm-mcp`, or another Python 3.10+ path passed with `--remote-python`.
+
+The default installer does not require admin install paths. It places lab tools under the remote user's home directory.
+
+## Install
+
+### Fast Path
+
+From a clean station checkout on the workstation:
 
 ```bash
-export MACRE_PROJECTS_ROOT="$HOME/re"
+git clone https://github.com/UnsaltedHash42/mac-reversing-station ~/tools/skillz
+cd ~/tools/skillz
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user>
 ```
 
-Choose the SSH alias and remote home directory for your lab host:
+If this is the first time connecting to the lab host and password SSH is still needed for key setup:
 
 ```bash
-export MACRE_MACHINE="<lab-host>"
-export MACRE_REMOTE_HOME="/Users/<remote-user>"
-export MACRE_REMOTE_TARGETS="$MACRE_REMOTE_HOME/Targets"
-export MACRE_REMOTE_PYTHON="/opt/homebrew/bin/python3"
+scripts/setup-keep.sh \
+  --host <lab-host> \
+  --remote-home /Users/<remote-user> \
+  --vm-password '<initial-password>'
 ```
 
-Add the SSH alias to `~/.ssh/config`:
+What the installer does:
+
+1. Links the station skills into `~/.cursor/skills/`.
+2. Creates `~/.ssh/id_ed25519` if missing.
+3. Installs your public key on the lab host unless `--skip-ssh-key` is used.
+4. Verifies non-interactive SSH.
+5. Installs Ghidra, Java, Ghidra MCP, and Ghidra hunt scripts on the lab host.
+6. Deploys `macre-vm-mcp` on the lab host.
+7. Writes or updates `~/.cursor/mcp.json` with `ghidra-mcp` and `macre-vm-mcp` entries.
+8. Runs structural station checks.
+
+Restart Cursor after the installer writes MCP config.
+
+### Rerun Safety
+
+The setup scripts are designed to be safe to rerun on the same workstation:
+
+- `scripts/setup-keep.sh` relinks skills idempotently and reuses an existing SSH key.
+- If `~/.ssh/id_ed25519` exists but the `.pub` file is missing, the installer regenerates only the public key.
+- `scripts/install-vm-ssh-key.sh` exits early when key auth already works and does not duplicate authorized-key rows.
+- `scripts/install-ghidra-host.sh` and `scripts/deploy-macre-vm-mcp.sh` are idempotent remote installs.
+- `scripts/configure-cursor-mcp.py` preserves unrelated MCP servers and writes a `.bak` before changing an existing `~/.cursor/mcp.json`.
+- Running setup for a new VM intentionally updates the `ghidra-mcp` and `macre-vm-mcp` entries to the new `--host` and `--remote-home`. Other MCP entries are preserved.
+
+To preview Cursor MCP changes without writing:
+
+```bash
+python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user> --dry-run
+```
+
+### Installer Options
+
+```bash
+scripts/setup-keep.sh --help
+```
+
+Common options:
+
+```bash
+# Configure only local Cursor skills and MCP JSON; skip remote installs.
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --skip-ssh-key --skip-ghidra --skip-dynamic
+
+# Install remote tooling but do not touch Cursor MCP config.
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --skip-mcp-config
+
+# Use a different Python on the lab host.
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --remote-python /usr/bin/python3
+
+# Include live Ghidra smoke checks after install.
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --live-smoke
+```
+
+### Manual Install
+
+Use this if you want to run each step yourself or debug setup one layer at a time.
+
+1. Add an SSH alias:
 
 ```sshconfig
 Host <lab-host>
@@ -65,52 +143,21 @@ Host <lab-host>
   ServerAliveInterval 30
 ```
 
-Verify SSH reaches the lab host:
-
-```bash
-ssh -o BatchMode=no <lab-host> 'uname -m; sw_vers -productVersion'
-```
-
-### 2. Clone The Station Template
-
-Keep one clean local copy for setup and for starting new projects:
-
-```bash
-mkdir -p "$HOME/tools"
-cd "$HOME/tools"
-git clone https://github.com/UnsaltedHash42/mac-reversing-station skillz
-cd skillz
-```
-
-### 3. Link Cursor Skills
+2. Link Cursor skills:
 
 ```bash
 ./cursor/skill-link.sh
 ```
 
-This makes the station skills available to Cursor. If the skill list looks stale, restart Cursor.
-
-### 4. Install SSH Key Access
-
-Generate a key if you do not already have one:
+3. Install SSH key access:
 
 ```bash
 ssh-keygen -t ed25519 -N '' -f "$HOME/.ssh/id_ed25519"
-```
-
-Install the public key on the lab host:
-
-```bash
 MACRE_MACHINE="<lab-host>" bash scripts/install-vm-ssh-key.sh
-```
-
-Verify non-interactive SSH:
-
-```bash
 ssh -o BatchMode=yes <lab-host> true
 ```
 
-### 5. Install Ghidra And MCP On The Lab Host
+4. Install Ghidra and `ghidra-mcp` on the lab host:
 
 ```bash
 MACRE_MACHINE="<lab-host>" \
@@ -118,25 +165,7 @@ MACRE_REMOTE_HOME="/Users/<remote-user>" \
 bash scripts/install-ghidra-host.sh --install
 ```
 
-Smoke-test the Ghidra side:
-
-```bash
-MACRE_MACHINE="<lab-host>" \
-MACRE_REMOTE_HOME="/Users/<remote-user>" \
-bash scripts/install-ghidra-host.sh --smoke
-```
-
-Expected result:
-
-- Java prints.
-- Ghidra prints.
-- `ghidra-headless-mcp` prints.
-- `/bin/ls` opens in a Ghidra project.
-- Function listing works.
-- Decompilation works.
-- One Ghidra hunt script returns TSV.
-
-### 6. Deploy Dynamic Tooling
+5. Deploy `macre-vm-mcp` on the lab host:
 
 ```bash
 MACRE_MACHINE="<lab-host>" \
@@ -145,174 +174,102 @@ MACRE_REMOTE_PYTHON="/opt/homebrew/bin/python3" \
 bash scripts/deploy-macre-vm-mcp.sh
 ```
 
-`macre-vm-mcp` is what Cursor uses for LLDB, DTrace, codesign, entitlement dumps, launchd inspection, and logs.
+6. Write Cursor MCP config:
 
-### 7. Configure Cursor MCP
-
-Open `~/.cursor/mcp.json` and add entries like this, replacing placeholders:
-
-```json
-{
-  "mcpServers": {
-    "ghidra-mcp": {
-      "command": "ssh",
-      "args": [
-        "-o", "BatchMode=yes",
-        "-o", "ServerAliveInterval=30",
-        "<lab-host>",
-        "/Users/<remote-user>/bin/ghidra-mcp-launch"
-      ],
-      "env": {}
-    },
-    "macre-vm-mcp": {
-      "command": "ssh",
-      "args": [
-        "-o", "BatchMode=yes",
-        "-o", "ServerAliveInterval=30",
-        "<lab-host>",
-        "/Users/<remote-user>/.venvs/macre-vm-mcp/bin/python",
-        "-m", "macre_vm_mcp"
-      ],
-      "env": {}
-    }
-  }
-}
+```bash
+python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
 ```
 
-Fully restart Cursor after changing MCP config.
+7. Restart Cursor.
 
-### 8. Validate The Station
+## Verify Installation
 
-From the clean station checkout:
+Run structural checks first:
 
 ```bash
 bash scripts/smoke-wave3.sh
 ```
 
-Run live checks too:
+Run live lab-host checks when SSH and remote tooling should be ready:
 
 ```bash
 MACRE_MACHINE="<lab-host>" bash scripts/smoke-wave3.sh --live
 ```
 
-The default smoke is structural and portable. The live smoke requires the lab host.
-
-## Starting A New Reversing Project
-
-Do this for every new target, customer program, or research thread.
-
-### 1. Clone A Fresh Project
+Check individual layers:
 
 ```bash
-mkdir -p "$HOME/re"
-cd "$HOME/re"
+ssh -o BatchMode=yes <lab-host> true
+MACRE_MACHINE="<lab-host>" MACRE_REMOTE_HOME="/Users/<remote-user>" bash scripts/install-ghidra-host.sh --check
+MACRE_MACHINE="<lab-host>" MACRE_REMOTE_HOME="/Users/<remote-user>" bash scripts/install-ghidra-host.sh --smoke
+python3 -m json.tool ~/.cursor/mcp.json >/dev/null
+```
+
+Expected result after a healthy install:
+
+- `ghidra-mcp` appears in Cursor's MCP tools after restart.
+- `macre-vm-mcp` appears in Cursor's MCP tools after restart.
+- `scripts/smoke-wave3.sh` reports zero failures.
+- `scripts/smoke-wave3.sh --live` can open, list, decompile, and run a Ghidra script against `/bin/ls` on the lab host.
+
+## Start A New Project
+
+Each target, customer program, or research thread should live in its own project clone.
+
+```bash
+mkdir -p ~/re
+cd ~/re
 git clone https://github.com/UnsaltedHash42/mac-reversing-station <project-name>
 cd <project-name>
+scripts/init-project.sh --name <project-name>
 ```
 
-If you use a private Git remote for the project, repoint `origin` before pushing:
+If the project has a private Git remote:
 
 ```bash
-git remote set-url origin <your-private-repo-url>
+scripts/init-project.sh --name <project-name> --remote <your-private-repo-url>
 ```
 
-### 2. Add Local Findings Files
+The project initializer copies the findings template without overwriting existing files, creates `HANDOFF.md` and `machines.md`, ensures local work directories exist, and runs the findings template smoke test.
 
-The station files stay in the clone. The findings template creates the local project files you will actually fill in.
+After initialization, fill in:
 
-```bash
-rsync -a --ignore-existing templates/findings-repo/ ./
-cp -n HANDOFF.md.template HANDOFF.md
-cp -n machines.md.template machines.md
-bash scripts/smoke-findings-repo.sh
-```
+- `LAB_SAFETY.md`: lab host, test user, SIP state, snapshots, and allowed dynamic test shapes.
+- `machines.md`: replace placeholders with your actual lab aliases.
+- `HANDOFF.md`: current objective and next artifact.
 
-You should now have:
+Authorization is an operator precondition. Do not start dynamic testing until `LAB_SAFETY.md` names the host, user, rollback state, and allowed test shape.
 
-- `LAB_SAFETY.md` for machine roles, snapshots, test users, and destructive-test rules.
-- `CORPUS.md` for apps, binaries, versions, pass IDs, surfaces, and family labels.
-- `INDEX.md` for candidate rows and findings.
-- `METRICS.md` for candidate funnel and closure tracking.
-- `REPORTING.md` and `SUBMISSION_TRIAGE.md` for packaging.
-- `HANDOFF.md` for the current session state.
-- `targets/` for local copies of binaries being reversed.
-- `findings/analysis/` for TSVs, decompile notes, and static-analysis output.
-- `artifacts/` for logs, screenshots, crash reports, and dynamic proof.
-- `tools/custom/` for target-specific harnesses.
+## Target Intake
 
-### 3. Open The Project In Cursor
-
-Use **File -> Open Folder...** and choose:
-
-```text
-~/re/<project-name>
-```
-
-Cursor should be working from the project clone, not from a random downloads folder. This matters because all agent output should land in the project.
-
-### 4. Confirm Safety And Project State
-
-Authorization is a precondition for using the station, not a required file in every project. Before asking Cursor to hunt:
-
-1. Confirm you have authority to analyze the target and understand out-of-scope boundaries.
-2. Fill in `LAB_SAFETY.md`: lab host alias, remote user, SIP state, snapshot state, disposable user, and tests allowed on each machine.
-3. Fill in `machines.md`: replace `<PrimaryLab>` with your SSH alias.
-4. Let the target intake step create or update `CORPUS.md` with `PASS-001`, target inventory, surface notes, and family labels.
-5. Fill in `HANDOFF.md`: write the next concrete objective.
-
-Do not start dynamic testing until `LAB_SAFETY.md` says which host/user can safely run the target.
-
-## Where The Binary Lives
-
-Use two locations:
-
-- Local project copy: `targets/`
-- Remote lab-host copy: `$MACRE_REMOTE_TARGETS/<project-name>/`
-
-The local `targets/` directory is where copied app bundles or binaries live. It is ignored by git.
-
-The preferred start path is to point the intake script at the original target:
+The preferred start path is to point intake at the original target path:
 
 ```bash
 python3 scripts/start-target.py "/Applications/<App Name>.app" --pass-id PASS-001
 ```
 
-The script copies the target under `targets/`, writes a target map under `findings/analysis/`, and updates `CORPUS.md` with initial inventory and family labels.
+For source-available targets:
 
-You can still copy targets manually when needed.
+```bash
+python3 scripts/start-target.py "/Applications/<App Name>.app" \
+  --pass-id PASS-001 \
+  --source-root ../source-checkout \
+  --source-ref <commit-or-tag> \
+  --source-url <repo-or-release-url>
+```
 
-For an installed app:
+Intake copies the target under `targets/`, writes a target map and dossier under `findings/analysis/`, updates `CORPUS.md`, and seeds Watch decision support plus Scriptorium anchors.
+
+Use manual copy only when you need it:
 
 ```bash
 mkdir -p targets
 cp -R "/Applications/<App Name>.app" targets/
 ```
 
-For a downloaded installer:
+## Sync Targets To The Lab Host
 
-```bash
-mkdir -p targets
-cp "/path/to/<Installer>.pkg" targets/
-```
-
-For one binary:
-
-```bash
-mkdir -p targets
-cp "/path/to/<binary>" targets/
-```
-
-Record every target in `CORPUS.md` with:
-
-- app or component name
-- version/build
-- source URL or acquisition path
-- hash if useful
-- target family labels inferred from inventory
-- pass ID
-- scope note if the target needs one
-
-When the target needs Ghidra or dynamic tooling on the lab host, sync it:
+Ghidra and dynamic tools run on the lab host, so sync target binaries when a pass needs them there:
 
 ```bash
 MACRE_MACHINE="<lab-host>" \
@@ -321,183 +278,193 @@ MACRE_PROJECT="<project-name>" \
 bash scripts/rsync-to-vm.sh --record <target-id> targets/
 ```
 
-After sync, the remote path is:
+The sync script records the local-to-remote path mapping in `CORPUS.md` under `Lab Host Path Mapping`. Use that recorded path in Ghidra and Gatehouse prompts.
 
-```text
-/Users/<remote-user>/Targets/<project-name>/
-```
+## Usage
 
-The sync script records this mapping in `CORPUS.md` under `Lab Host Path Mapping`. Use the recorded path in Ghidra prompts instead of retyping it from memory.
+### Normal Loop
 
-## How You Reverse With The Station
+1. Start from a target path with `scripts/start-target.py`.
+2. Read the dossier and Watch recommendation in `CORPUS.md`.
+3. Pick the recommended Maproom recipe from `docs/playbooks/investigation-recipes.md`.
+4. Run the first static sweep through `ghidra-mcp`.
+5. Save TSVs and notes under `findings/analysis/`.
+6. Add candidates or closures to `INDEX.md` and `METRICS.md`.
+7. Use Gatehouse LLDB confirmation only after static analysis gives a concrete anchor and `LAB_SAFETY.md` permits dynamic work.
+8. Record evidence and decisions in `SCRIPTORIUM.md`, `CHRONICLE.md`, and `HANDOFF.md`.
 
-You are usually not clicking around in Ghidra first. The normal loop is:
+### First Cursor Prompt
 
-1. Point Cursor or `scripts/start-target.py` at the original target path.
-2. Let intake copy the target under `targets/`, write a target map and dossier, and update `CORPUS.md`.
-3. Let Watch classify observed surfaces, name coverage gaps, recommend recipes, and choose family labels or `unknown/mixed`.
-4. Ask Cursor to run the recommended Ghidra sweep through `ghidra-mcp`.
-5. Triage TSV rows in `findings/analysis/` and link the evidence in the Scriptorium.
-6. Pick one candidate for deeper decompilation or Gatehouse confirmation.
-7. Use `macre-vm-mcp`, LLDB, DTrace, logs, and small harnesses only when static analysis justifies it.
-8. Save results to `INDEX.md`, `METRICS.md`, `SCRIPTORIUM.md`, `CHRONICLE.md`, `HANDOFF.md`, and `artifacts/`.
-
-You can still open the Ghidra GUI manually on the lab host when visual navigation helps. Cursor should still save durable notes and outputs back into the project clone.
-
-## First Cursor Prompt
-
-Use this from inside the project clone:
+Use this from inside a project clone:
 
 ```text
 We are in REPO_MODE=analysis in a macOS reversing project.
 
 I am the human operator. Guide me step by step. Tell me what to open, what to run, where the binary should live, and what evidence to save.
 
-First read README.md, LAB_SAFETY.md, machines.md, CORPUS.md, METRICS.md, INDEX.md, and HANDOFF.md.
+First read README.md, LAB_SAFETY.md, machines.md, CORPUS.md, METRICS.md, INDEX.md, SCRIPTORIUM.md, CHRONICLE.md, and HANDOFF.md.
 
 Use Skills/offensive-macos-bundle-intake/SKILL.md. Start PASS-001 from "<target path>". Run target intake, write the target map and dossier, update CORPUS.md, let Watch classify observed surfaces into family labels or unknown/mixed, and choose the first Maproom recipe or static sweep. Do not run dynamic tests until LAB_SAFETY.md allows them. Save outputs under findings/analysis/ and update INDEX.md, METRICS.md, SCRIPTORIUM.md, CHRONICLE.md, and HANDOFF.md.
 ```
 
-## Prompt Patterns
+### Common Prompts
 
-### Inventory The Target
+Inventory a target:
 
 ```text
 Inventory targets/<App Name>.app for PASS-001. Identify the main executable, embedded helpers, XPC services, LaunchDaemons/LaunchAgents, privileged helper tools, updater components, Electron indicators, entitlements, code-signing flags, and obvious IPC surfaces. Update CORPUS.md, assign family labels or unknown/mixed, write the dossier, and propose the first Maproom recipe or Ghidra sweep.
 ```
 
-### Run A Ghidra Sweep
+Run a Ghidra sweep:
 
 ```text
 Use ghidra-mcp to open the main binary for PASS-001 from the lab-host path recorded in CORPUS.md. Run scan_xpc_client_validation.py and scan_privileged_helper_surface.py. Save TSV output under findings/analysis/ and summarize candidate rows into INDEX.md.
 ```
 
-### Confirm A Static Anchor With LLDB
+Confirm a static anchor with LLDB:
 
 ```text
 Use Skills/offensive-macos-gatehouse-ghidra-lldb/SKILL.md. Confirm the Ghidra anchor for IDX-001 with LLDB only if LAB_SAFETY.md permits the test shape. Record slide/slice uncertainty, save the LLDB transcript, and link the result in SCRIPTORIUM.md and HANDOFF.md.
 ```
 
-### Decompile One Candidate
+Ask for next moves:
 
 ```text
-Deep dive candidate IDX-001. Use ghidra-mcp to find the listener/delegate or authorization function, decompile it, trace callers and relevant strings, and write a short hypothesis note under findings/analysis/. Do not attempt a PoC yet.
+Based on the current files and candidates, suggest the next three highest-value reversing moves. For each move, explain the expected evidence, the tool you would use, the file you would update, and what would make us stop or continue.
 ```
 
-### Ask For On-The-Fly Suggestions
-
-```text
-Based on the current files and candidates, suggest the next three highest-value reversing moves. For each move, explain the expected evidence, the command/tool you would use, the file you would update, and what would make us stop or continue.
-```
-
-### Prepare A Dynamic Test
+Prepare dynamic work safely:
 
 ```text
 Prepare a safe dynamic confirmation plan for IDX-001. Read LAB_SAFETY.md first. List the exact host, user, command, expected output, rollback/cleanup, and artifact path. Ask for confirmation before running anything that changes system state.
 ```
 
-### Close A False Positive
+## Tool Guide
 
-```text
-Close IDX-001 as a false positive if the decompiled authorization path is correct. Write the closure rationale in INDEX.md and update METRICS.md. Include the function, check performed, and evidence path.
-```
+- **Cursor**: orchestration, notes, promptable reasoning, triage, and file updates.
+- **Watch**: intake-driven static decision support and coverage gaps.
+- **Maproom**: reusable recipes for common investigation goals.
+- **Ghidra MCP**: opening Mach-O files, listing functions, decompiling, running station Ghidra scripts, and producing TSV output.
+- **Ghidra GUI**: visual navigation, graphs, and manual second-pass review.
+- **macre-vm-mcp**: codesign, entitlements, launchd, logs, LLDB, DTrace, and host checks.
+- **Gatehouse**: static-to-dynamic confirmation from Ghidra anchors into LLDB.
+- **Scriptorium**: evidence continuity across sessions.
+- **Terminal**: setup, sync, git, hashes, and one-off file organization.
 
-### Produce A Report Packet
+## Triage States
 
-```text
-Use Skills/offensive-macos-submission-packet/SKILL.md to draft a vendor-facing report for IDX-003. Keep it analysis-focused: summary, affected versions, preconditions, root cause, impact, minimal reproduction, evidence, and remediation guidance. Do not include persistence, evasion, or operational chaining.
-```
-
-## Which Tools To Use When
-
-- Use **Cursor** for orchestration, notes, promptable reasoning, triage, and writing files.
-- Use **Ghidra MCP** for opening Mach-O files, listing functions, decompiling, running station Ghidra scripts, and extracting repeatable TSV output.
-- Use **Ghidra GUI** when you want visual navigation, graphs, or a second human view.
-- Use **macre-vm-mcp** for codesign, entitlements, launchd, logs, LLDB, DTrace, and host checks.
-- Use **Watch** recommendations and the **Maproom** recipe registry to decide which static artifact should come next.
-- Use **Gatehouse** only after a static anchor exists and lab safety allows dynamic confirmation.
-- Use **Terminal** for simple copy, sync, git, hashes, and one-off file organization.
-- Use **custom harnesses** only after a static hypothesis is specific enough to justify them.
-
-## Triage Rules
-
-After a sweep, every candidate should become one of:
+Every candidate should become one of:
 
 - `escalated`: likely crosses a trust boundary and deserves deeper RE.
-- `hold`: plausible but blocked by missing setup, missing symbols, or unclear reachability.
+- `hold`: plausible but blocked by setup, missing symbols, or unclear reachability.
 - `closed`: expected behavior or correctly gated, with evidence.
-- `blocked`: cannot continue until a machine, target, authorization, or tool problem is fixed.
+- `blocked`: cannot continue until a machine, target, authorization, or tool issue is fixed.
 - `reported`: confirmed and packaged.
 
-Do not leave rows as "interesting." Interesting is a feeling, not a research state.
-
-## Daily Workflow
-
-From the project clone:
-
-```bash
-bash scripts/smoke-findings-repo.sh
-ssh -o BatchMode=yes <lab-host> true
-MACRE_MACHINE="<lab-host>" bash scripts/install-ghidra-host.sh --smoke
-```
-
-Then read:
-
-- `LAB_SAFETY.md`
-- `machines.md`
-- `CORPUS.md`
-- `INDEX.md`
-- `METRICS.md`
-- `HANDOFF.md`
-- the relevant `Skills/offensive-macos-*/SKILL.md`
-
-Pick exactly one next artifact to produce: TSV, decompile note, candidate update, harness result, log capture, closure rationale, metrics update, handoff, or report draft.
+Do not leave rows as `interesting`. Interesting is a feeling, not a research state.
 
 ## Troubleshooting
 
-`ghidra-mcp` does not appear in Cursor:
+### Cursor Does Not Show MCP Tools
 
-- Check `~/.cursor/mcp.json`.
-- Fully restart Cursor.
-- Run `ssh <lab-host> /Users/<remote-user>/bin/ghidra-mcp-launch --version`.
+1. Confirm `~/.cursor/mcp.json` is valid:
 
-SSH fails:
+```bash
+python3 -m json.tool ~/.cursor/mcp.json >/dev/null
+```
 
-- Check `~/.ssh/config`.
-- Run `ssh -v <lab-host> true`.
-- Re-run `MACRE_MACHINE=<lab-host> bash scripts/install-vm-ssh-key.sh`.
+2. Re-run the config writer:
 
-Ghidra import or decompile is slow:
+```bash
+python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
+```
 
-- First import is expensive.
-- Reuse the same Ghidra project/session when possible.
-- Narrow the binary slice instead of importing an entire app tree at once.
+3. Fully restart Cursor.
 
-Script not found on the lab host:
+4. Verify the remote commands work:
 
-- Re-run `MACRE_MACHINE=<lab-host> bash scripts/install-ghidra-host.sh --install`.
-- Verify `ssh <lab-host> 'ls ~/ghidra-scripts'`.
+```bash
+ssh <lab-host> /Users/<remote-user>/bin/ghidra-mcp-launch --version
+ssh <lab-host> /Users/<remote-user>/.venvs/macre-vm-mcp/bin/python -c 'from macre_vm_mcp.server import build_server; build_server()'
+```
 
-Dynamic probe feels risky:
+### SSH Fails
 
-- Stop and read `LAB_SAFETY.md`.
-- Move to a crash-test host or disposable user.
-- Snapshot first.
-- Ask Cursor to write a confirmation plan before running anything.
+```bash
+ssh -v <lab-host> true
+MACRE_MACHINE="<lab-host>" bash scripts/install-vm-ssh-key.sh
+ssh -o BatchMode=yes <lab-host> true
+```
 
-## What Good Output Looks Like
+Check `~/.ssh/config` for the right `HostName`, `User`, and `PubkeyAuthentication yes`.
 
-Good station output is not "I looked at a binary." Good output is:
+### Ghidra Install Fails
 
-- a target recorded in `CORPUS.md`
-- a repeatable TSV under `findings/analysis/`
-- a ranked candidate in `INDEX.md`
-- a decompiled function tied to a hypothesis
-- a dynamic result that confirms or closes the hypothesis
-- metrics updated in `METRICS.md`
-- artifacts saved under `artifacts/`
-- a handoff that lets the next session resume quickly
-- a report packet when the bug is real
+Re-run the installer; it is idempotent and uses cached downloads when checksums match:
+
+```bash
+MACRE_MACHINE="<lab-host>" \
+MACRE_REMOTE_HOME="/Users/<remote-user>" \
+bash scripts/install-ghidra-host.sh --install
+```
+
+Then run:
+
+```bash
+MACRE_MACHINE="<lab-host>" \
+MACRE_REMOTE_HOME="/Users/<remote-user>" \
+bash scripts/install-ghidra-host.sh --smoke
+```
+
+### Ghidra Script Not Found On Lab Host
+
+```bash
+MACRE_MACHINE="<lab-host>" \
+MACRE_REMOTE_HOME="/Users/<remote-user>" \
+bash scripts/install-ghidra-host.sh --install
+ssh <lab-host> 'ls ~/ghidra-scripts'
+```
+
+### `macre-vm-mcp` Fails
+
+```bash
+MACRE_MACHINE="<lab-host>" \
+MACRE_REMOTE_HOME="/Users/<remote-user>" \
+MACRE_REMOTE_PYTHON="/opt/homebrew/bin/python3" \
+bash scripts/deploy-macre-vm-mcp.sh
+```
+
+If the lab host uses a different Python, pass the path with `MACRE_REMOTE_PYTHON` or `scripts/setup-keep.sh --remote-python`.
+
+### Target Sync Fails
+
+```bash
+ssh -o BatchMode=yes <lab-host> true
+mkdir -p targets
+MACRE_MACHINE="<lab-host>" \
+MACRE_REMOTE_TARGETS="/Users/<remote-user>/Targets" \
+bash scripts/rsync-to-vm.sh --record <target-id> targets/
+```
+
+If `targets/` is empty or missing, run target intake first.
+
+### Dynamic Probe Feels Risky
+
+Stop and read `LAB_SAFETY.md`. Move to a crash-test host or disposable user, snapshot first, and ask Cursor to write a confirmation plan before running anything that changes state.
+
+## Good Output
+
+A productive session leaves behind:
+
+- A target recorded in `CORPUS.md`.
+- A dossier and target map under `findings/analysis/`.
+- A repeatable TSV or decompile note under `findings/analysis/`.
+- Candidate or closure rows in `INDEX.md`.
+- Metrics updates in `METRICS.md`.
+- Evidence and decisions in `SCRIPTORIUM.md` and `CHRONICLE.md`.
+- Dynamic artifacts under `artifacts/` when dynamic work was approved.
+- A `HANDOFF.md` that lets the next session resume quickly.
+- A report packet when the bug is real.
 
 ## Operating Boundary
 
