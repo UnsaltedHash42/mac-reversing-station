@@ -101,14 +101,14 @@ finding-rate-driven third-party macOS application research workflow.
   for privacy-permission-heavy apps involving TCC, Accessibility, Automation,
   Screen Recording, protected files, bookmarks, or file authority transfer.
 
-## Wave 4 — Active Analysis Workbench
+## Wave 4 — Active Analysis Keep
 
 Wave 4 turns the station from a tool collection into an active reversing
-workbench: Scryer performs static decision support, Grimoire routes recipes,
-Ledger preserves evidence continuity, and Bridge connects Ghidra anchors to
+keep: Watch performs static decision support, Maproom routes recipes,
+Scriptorium preserves evidence continuity, and Gatehouse connects Ghidra anchors to
 LLDB confirmation.
 
-- `Skills/offensive-macos-scryer-static-analysis` — static decision-support
+- `Skills/offensive-macos-watch-static-analysis` — static decision-support
   workflow for turning intake, dossier facts, and first-pass static sweeps into
   recommended next artifacts.
 - `Skills/offensive-macos-source-binary-correlation` — source-assisted lane for
@@ -117,11 +117,11 @@ LLDB confirmation.
 - `Skills/offensive-macos-electron-surface-pack` — Electron-specific surface
   workflow covering ASAR archives, package entrypoints, preload scripts, IPC,
   native modules, fuses, sandbox posture, and update channels.
-- `Skills/offensive-macos-grimoire-recipes` — recipe-registry workflow for
+- `Skills/offensive-macos-maproom-recipes` — recipe-registry workflow for
   mapping operator goals to skills, scripts, MCP tools, outputs, and state
   updates.
-- `Skills/offensive-macos-ledger-evidence` — evidence continuity workflow for
+- `Skills/offensive-macos-scriptorium-evidence` — evidence continuity workflow for
   linking claims, artifacts, candidates, and handoffs across sessions.
-- `Skills/offensive-macos-bridge-ghidra-lldb` — static-to-dynamic workflow for
+- `Skills/offensive-macos-gatehouse-ghidra-lldb` — static-to-dynamic workflow for
   carrying Ghidra symbols, functions, and addresses into LLDB confirmation.
 

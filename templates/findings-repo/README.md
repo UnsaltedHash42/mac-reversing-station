@@ -19,7 +19,7 @@ After copying this template into a project clone, point the station at an app bu
 python3 scripts/start-target.py "/Applications/<App Name>.app" --pass-id PASS-001
 ```
 
-The script copies the target under `targets/`, writes a target map and dossier under `findings/analysis/`, and updates `CORPUS.md` with initial inventory, surfaces, family labels, Scryer decision support, and Ledger anchors.
+The script copies the target under `targets/`, writes a target map and dossier under `findings/analysis/`, and updates `CORPUS.md` with initial inventory, surfaces, family labels, Watch decision support, and Scriptorium anchors.
 
 ## Required Files
 
@@ -28,8 +28,8 @@ The script copies the target under `targets/`, writes a target map and dossier u
 - `METRICS.md` — records candidate funnels, closures, escalations, confirmed findings, and blockers per pass.
 - `INDEX.md` — tracks candidate and finding rows.
 - `REPORTING.md` — explains report modes and evidence packaging.
-- `EVIDENCE_LEDGER.md` — links claims, decisions, and evidence paths across sessions.
-- `FLIGHT_RECORDER.md` — records concise investigation events and next actions.
+- `SCRIPTORIUM.md` — links claims, decisions, and evidence paths across sessions.
+- `CHRONICLE.md` — records concise investigation events and next actions.
 
 ## Daily Loop
 
@@ -39,7 +39,7 @@ The script copies the target under `targets/`, writes a target map and dossier u
 4. Save raw scan output under `findings/analysis/`.
 5. Save logs, crash reports, screenshots, and proof artifacts under `artifacts/`.
 6. Save custom harnesses under `tools/custom/<target>/`.
-7. Update `INDEX.md`, `METRICS.md`, `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, and `HANDOFF.md` before ending the session.
+7. Update `INDEX.md`, `METRICS.md`, `SCRIPTORIUM.md`, `CHRONICLE.md`, and `HANDOFF.md` before ending the session.
 
 ## Boundaries
 

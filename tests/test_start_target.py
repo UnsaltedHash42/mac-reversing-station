@@ -90,7 +90,8 @@ class TestStartTarget(unittest.TestCase):
         self.assertEqual(data["dossier_path"], "findings/analysis/PASS-001-example-dossier.json")
         self.assertIn("bundle-dossier", data["decision_support"]["recommended_recipes"])
         self.assertIn("scan_xpc_client_validation.py", data["decision_support"]["recommended_ghidra_scripts"])
-        self.assertEqual(dossier_data["ledger"]["anchor_id"], "PASS-001:example")
+        self.assertEqual(dossier_data["scriptorium"]["anchor_id"], "PASS-001:example")
+        self.assertEqual(dossier_data["scriptorium"]["chronicle"], "CHRONICLE.md")
         self.assertIn("privileged helpers / updaters", data["classification"]["family_labels"])
         self.assertIn("TCC-heavy consumer apps", data["classification"]["family_labels"])
         self.assertTrue(any(component["kind"] == "xpc-service" for component in data["components"]))
@@ -113,7 +114,7 @@ class TestStartTarget(unittest.TestCase):
         self.assertIn("| example | PASS-001 | `findings/analysis/PASS-001-example-dossier.json` |", corpus)
         self.assertIn("| PASS-001:example | example | `findings/analysis/PASS-001-example-dossier.json` |", corpus)
         self.assertIn("| example | privileged helpers / updaters, TCC-heavy consumer apps | initial |", corpus)
-        self.assertIn("| PASS-001 | Scryer review for Example.app |", corpus)
+        self.assertIn("| PASS-001 | Watch review for Example.app |", corpus)
 
         second = self.run_script(str(app), "--pass-id", "PASS-001")
         self.assertEqual(second.returncode, 0, msg=second.stdout + second.stderr)

@@ -1,4 +1,4 @@
-# Flight Recorder
+# Chronicle
 
 Append concise investigation events here when a conclusion, tool output, or handoff-relevant decision changes the path of the research.
 

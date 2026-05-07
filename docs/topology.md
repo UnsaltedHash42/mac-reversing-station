@@ -25,10 +25,10 @@ flowchart LR
     MCP -->|"ssh stdio macre-vm-mcp"| Primary
     Cursor --> Template
     Cursor --> Project
-    Project --> Scryer["Scryer<br/>dossier + decision support"]
-    Scryer --> Ledger["Ledger<br/>evidence continuity"]
-    Scryer --> Grimoire["Grimoire<br/>recipe registry"]
-    Grimoire --> Cursor
+    Project --> Watch["Watch<br/>dossier + decision support"]
+    Watch --> Scriptorium["Scriptorium<br/>evidence continuity"]
+    Watch --> Maproom["Maproom<br/>recipe registry"]
+    Maproom --> Cursor
     Cursor -.->|"ssh direct"| Crash
     Cursor -.->|"ssh direct"| Cross
     Cursor -.->|"ssh direct"| Intel
@@ -97,7 +97,7 @@ Cursor launches:
 }
 ```
 
-Use it for LLDB, DTrace, codesign, entitlements, launchd, and logs. Bridge workflows use `macre-vm-mcp` to carry Ghidra-derived anchors into LLDB batch confirmation after lab safety allows the test shape.
+Use it for LLDB, DTrace, codesign, entitlements, launchd, and logs. Gatehouse workflows use `macre-vm-mcp` to carry Ghidra-derived anchors into LLDB batch confirmation after lab safety allows the test shape.
 
 ## Hopper Status
 
@@ -112,9 +112,9 @@ Hopper or another GUI decompiler may remain installed on the lab host for manual
 | `scripts/install-ghidra-host.sh` | Install/check/smoke Ghidra + headless MCP on the primary lab host |
 | `ghidra-scripts/` | Read-only hunt scripts synced to the lab host |
 | `macre-vm-mcp/` | VM-side dynamic tooling MCP server |
-| `templates/findings-repo/` | Private research repo starter with lab safety, corpus, Ledger, metrics, reporting, and handoff templates |
+| `templates/findings-repo/` | Private research repo starter with lab safety, corpus, Scriptorium, metrics, reporting, and handoff templates |
 | `docs/ontology/` | Shared macOS vulnerability-class ontology |
-| `docs/playbooks/` | Third-party app family playbooks and Grimoire recipe registry |
+| `docs/playbooks/` | Third-party app family playbooks and Maproom recipe registry |
 | `Skills/offensive-macos-*` | Cursor skills for tooling, hunts, ontology, playbooks, discipline, lab, and reporting |
 | `README.md` | How to set up and operate the station |
 

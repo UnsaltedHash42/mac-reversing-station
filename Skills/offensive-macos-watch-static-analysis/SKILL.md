@@ -1,21 +1,21 @@
 ---
-name: offensive-macos-scryer-static-analysis
+name: offensive-macos-watch-static-analysis
 description: >-
   Use when turning target intake, dossier facts, and first-pass static sweeps
   into decision support for a macOS reversing pass.
-folder: offensive-macos-scryer-static-analysis
+folder: offensive-macos-watch-static-analysis
 source: skillz-wave4
 trigger_phrases:
-  - "scryer"
+  - "watch"
   - "static decision support"
   - "recommend the first sweep"
   - "what should we analyze next"
 ---
 
-# Scryer Static Analysis
+# Watch Static Analysis
 
 > **Channel boundary:** `REPO_MODE=analysis`. Triage, root-cause analysis,
-> defensive mapping, and reporting only. Scryer recommends next evidence; it
+> defensive mapping, and reporting only. Watch recommends next evidence; it
 > does not claim proof.
 
 ## When To Use
@@ -29,13 +29,13 @@ trigger_phrases:
 1. Read `CORPUS.md`, the target map, and the dossier under `findings/analysis/`.
 2. Identify observed surfaces, family labels, Electron/source indicators, and coverage gaps.
 3. Select recipes from `docs/playbooks/investigation-recipes.md`.
-4. Recommend one next artifact: a Ghidra TSV, decompile note, source-correlation note, Electron IPC note, or Bridge LLDB confirmation plan.
-5. Update `CORPUS.md`, `EVIDENCE_LEDGER.md`, `FLIGHT_RECORDER.md`, and `HANDOFF.md` when the decision changes project state.
+4. Recommend one next artifact: a Ghidra TSV, decompile note, source-correlation note, Electron IPC note, or Gatehouse LLDB confirmation plan.
+5. Update `CORPUS.md`, `SCRIPTORIUM.md`, `CHRONICLE.md`, and `HANDOFF.md` when the decision changes project state.
 
 ## Output Shape
 
 ```markdown
-## Scryer Recommendation
+## Watch Recommendation
 
 - Target ID:
 - Pass ID:

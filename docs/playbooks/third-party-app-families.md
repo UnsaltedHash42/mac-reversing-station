@@ -1,6 +1,6 @@
 # Third-Party App Family Playbooks
 
-Playbooks are views over the shared ontology in `docs/ontology/macos-vulnerability-classes.md`. Start by inventorying the bundle or binary, derive one or more family labels from observed surfaces, then let Scryer route the next move through `docs/playbooks/investigation-recipes.md`.
+Playbooks are views over the shared ontology in `docs/ontology/macos-vulnerability-classes.md`. Start by inventorying the bundle or binary, derive one or more family labels from observed surfaces, then let Watch route the next move through `docs/playbooks/investigation-recipes.md`.
 
 ## Inventory-First Family Routing
 
@@ -22,7 +22,7 @@ Do not choose a family from the app's marketing category. Start with target inta
 4. Inventory app bundles, helpers, plists, entitlements, XPC services, and data stores.
 5. Assign family labels from evidence, allowing multiple labels or `unknown/mixed`.
 6. Map surfaces to ontology classes.
-7. Pick a Grimoire recipe and run applicable Ghidra or metadata sweeps.
+7. Pick a Maproom recipe and run applicable Ghidra or metadata sweeps.
 8. Add candidate rows to `INDEX.md`.
 9. Update `METRICS.md` with candidates, closures, escalations, confirmed findings, and blockers.
 10. Use `REPORTING.md` only after a finding has lab reproduction and root-cause evidence.

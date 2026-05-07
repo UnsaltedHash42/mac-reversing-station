@@ -9,7 +9,7 @@ Wraps VM-resident tooling as MCP tools:
 |--------|------|---------|
 | `tools_lldb` | `lldb_run` | scripted batch lldb run with breakpoints |
 | `tools_lldb` | `lldb_break_and_inspect` | one-shot break + register/memory dump |
-| `tools_lldb` | `lldb_run_anchors` | Bridge workflow from Ghidra anchors to LLDB stops |
+| `tools_lldb` | `lldb_run_anchors` | Gatehouse workflow from Ghidra anchors to LLDB stops |
 | `tools_dtrace` | `dtrace_script` | run a D-script with timeout |
 | `tools_dtrace` | `dtrace_oneliner` | run a single-line D expression |
 | `tools_codesign` | `codesign_inspect` | parsed `codesign -dv` output |

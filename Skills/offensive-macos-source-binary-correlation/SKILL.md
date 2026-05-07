@@ -29,7 +29,7 @@ trigger_phrases:
 2. Identify source claims worth confirming in the shipped artifact.
 3. Map each claim to binary evidence: symbols, strings, functions, build metadata, or decompiled code.
 4. Mark confidence as aligned, partial, divergent, or unverified.
-5. Route dynamic confirmation through Bridge only after a static binary anchor exists.
+5. Route dynamic confirmation through Gatehouse only after a static binary anchor exists.
 
 ## Output Shape
 
@@ -48,5 +48,5 @@ trigger_phrases:
 ## See Also
 
 - `docs/playbooks/investigation-recipes.md`
-- `Skills/offensive-macos-scryer-static-analysis/SKILL.md`
-- `Skills/offensive-macos-bridge-ghidra-lldb/SKILL.md`
+- `Skills/offensive-macos-watch-static-analysis/SKILL.md`
+- `Skills/offensive-macos-gatehouse-ghidra-lldb/SKILL.md`

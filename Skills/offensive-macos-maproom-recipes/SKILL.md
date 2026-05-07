@@ -1,25 +1,25 @@
 ---
-name: offensive-macos-grimoire-recipes
+name: offensive-macos-maproom-recipes
 description: >-
   Use when selecting or maintaining investigation recipes that map goals to
   skills, scripts, MCP tools, outputs, and project-state updates.
-folder: offensive-macos-grimoire-recipes
+folder: offensive-macos-maproom-recipes
 source: skillz-wave4
 trigger_phrases:
-  - "grimoire"
+  - "maproom"
   - "recipe registry"
   - "which recipe"
   - "investigation recipe"
 ---
 
-# Grimoire Recipes
+# Maproom Recipes
 
 > **Channel boundary:** `REPO_MODE=analysis`. Recipes route evidence collection;
 > they are not exploit chains or proof by themselves.
 
 ## When To Use
 
-- Scryer recommends a recipe ID.
+- Watch recommends a recipe ID.
 - The operator asks what ordered workflow should run for a goal.
 - A new reusable static/dynamic workflow needs to be added without bloating the README.
 
@@ -35,4 +35,4 @@ trigger_phrases:
 
 - `docs/playbooks/investigation-recipes.md`
 - `scripts/validate-recipes.py`
-- `Skills/offensive-macos-scryer-static-analysis/SKILL.md`
+- `Skills/offensive-macos-watch-static-analysis/SKILL.md`

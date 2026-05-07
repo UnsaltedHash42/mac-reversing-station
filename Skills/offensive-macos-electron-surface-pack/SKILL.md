@@ -19,7 +19,7 @@ trigger_phrases:
 
 ## When To Use
 
-- Scryer detects ASAR archives, Electron frameworks, `package.json`, preload scripts, or native `.node` modules.
+- Watch detects ASAR archives, Electron frameworks, `package.json`, preload scripts, or native `.node` modules.
 - The operator needs Electron-specific static review before choosing dynamic checks.
 - A target mixes browser, Node, native module, and macOS bundle surfaces.
 
@@ -49,5 +49,5 @@ trigger_phrases:
 ## See Also
 
 - `docs/playbooks/investigation-recipes.md`
-- `Skills/offensive-macos-scryer-static-analysis/SKILL.md`
+- `Skills/offensive-macos-watch-static-analysis/SKILL.md`
 - `Skills/offensive-macos-vuln-ontology/SKILL.md`

@@ -16,7 +16,7 @@ REQUIRED_RECIPE_IDS = {
     "review-tcc-and-persistent-authorization",
     "review-electron-ipc-and-packaging",
     "correlate-source-to-binary",
-    "bridge-ghidra-lldb-confirmation",
+    "gatehouse-ghidra-lldb-confirmation",
     "inventory-first-manual-routing",
 }
 

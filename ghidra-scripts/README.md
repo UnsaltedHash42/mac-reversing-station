@@ -44,7 +44,7 @@ The scripts intentionally bias toward stable triage signals over proof. A positi
 
 - `export_lldb_anchors.py`
   - TSV: `target	functions	entry_points	evidence`
-  - Exports capped function entry anchors for Bridge workflows that need LLDB confirmation.
+  - Exports capped function entry anchors for Gatehouse workflows that need LLDB confirmation.
 
 ## Invocation Pattern
 

@@ -24,9 +24,9 @@ Agent-maintained component inventory. Keep this summarized; large generated maps
 | Target ID | Pass ID | Surfaces | Ontology Candidates | Evidence Path | Notes |
 |-----------|---------|----------|---------------------|---------------|-------|
 
-## Scryer Decision Support
+## Watch Decision Support
 
-Scryer is the workbench's static-analysis decision layer. It turns intake and first-pass static facts into recommended recipes, Ghidra sweeps, coverage gaps, and next operator decisions.
+Watch is the keep's static-analysis decision layer. It turns intake and first-pass static facts into recommended recipes, Ghidra sweeps, coverage gaps, and next operator decisions.
 
 | Target ID | Pass ID | Dossier Path | Recommended Recipes | Coverage Gaps | Next Decision |
 |-----------|---------|--------------|---------------------|---------------|---------------|
@@ -52,9 +52,9 @@ Use this after syncing targets to the lab host for Ghidra, LLDB, DTrace, logs, o
 | Target ID | Local Path | Remote Path | Synced At | Notes |
 |-----------|------------|-------------|-----------|-------|
 
-## Ledger Anchors
+## Scriptorium Anchors
 
-Ledger anchors connect intake, static sweeps, dynamic observations, candidate rows, and handoff notes without storing target-specific evidence in the station template.
+Scriptorium anchors connect intake, static sweeps, dynamic observations, candidate rows, and handoff notes without storing target-specific evidence in the station template.
 
 | Anchor ID | Target ID | Evidence Path | Claim / Decision | Status |
 |-----------|-----------|---------------|------------------|--------|

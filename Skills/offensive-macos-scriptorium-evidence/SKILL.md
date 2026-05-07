@@ -1,20 +1,20 @@
 ---
-name: offensive-macos-ledger-evidence
+name: offensive-macos-scriptorium-evidence
 description: >-
   Use when linking claims, artifacts, decisions, and handoff state across a
   macOS reversing project.
-folder: offensive-macos-ledger-evidence
+folder: offensive-macos-scriptorium-evidence
 source: skillz-wave4
 trigger_phrases:
-  - "ledger"
+  - "scriptorium"
   - "evidence graph"
   - "flight recorder"
   - "why do we believe"
 ---
 
-# Ledger Evidence
+# Scriptorium Evidence
 
-> **Channel boundary:** `REPO_MODE=analysis`. The Ledger preserves evidence and
+> **Channel boundary:** `REPO_MODE=analysis`. The Scriptorium preserves evidence and
 > decisions. It does not store target binaries, PoCs, or sensitive artifacts in
 > the station template.
 
@@ -27,13 +27,13 @@ trigger_phrases:
 ## Workflow
 
 1. Use the target ID and pass ID from `CORPUS.md`.
-2. Add or update an anchor row in `EVIDENCE_LEDGER.md` with the claim, evidence path, status, and next action.
-3. Append a concise event to `FLIGHT_RECORDER.md` when the investigation direction changes.
+2. Add or update an anchor row in `SCRIPTORIUM.md` with the claim, evidence path, status, and next action.
+3. Append a concise event to `CHRONICLE.md` when the investigation direction changes.
 4. Reflect candidate status changes in `INDEX.md` and counts in `METRICS.md`.
 5. Update `HANDOFF.md` so the next agent can resume from the latest evidence path.
 
 ## See Also
 
-- `templates/findings-repo/EVIDENCE_LEDGER.md`
-- `templates/findings-repo/FLIGHT_RECORDER.md`
-- `Skills/offensive-macos-scryer-static-analysis/SKILL.md`
+- `templates/findings-repo/SCRIPTORIUM.md`
+- `templates/findings-repo/CHRONICLE.md`
+- `Skills/offensive-macos-watch-static-analysis/SKILL.md`

@@ -407,7 +407,7 @@ def build_decision_support(inventory: dict[str, Any]) -> dict[str, Any]:
 
     coverage_gaps.append("Codesign, entitlements, notarization, and load-command details require follow-up tooling.")
     return {
-        "scryer_version": 1,
+        "watch_version": 1,
         "recommended_recipes": dedupe(recipes),
         "recommended_ghidra_scripts": dedupe(ghidra_scripts),
         "coverage_gaps": dedupe(coverage_gaps),
@@ -427,11 +427,11 @@ def build_dossier(inventory: dict[str, Any]) -> dict[str, Any]:
         "electron": inventory["electron"],
         "source_correlation": inventory["source_correlation"],
         "decision_support": inventory["decision_support"],
-        "ledger": {
-            "anchor_id": ledger_anchor_id(inventory),
+        "scriptorium": {
+            "anchor_id": scriptorium_anchor_id(inventory),
             "target_map_path": inventory["target_map_path"],
             "dossier_path": inventory["dossier_path"],
-            "flight_recorder": "FLIGHT_RECORDER.md",
+            "chronicle": "CHRONICLE.md",
         },
     }
 
@@ -456,7 +456,7 @@ def dedupe(values: list[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-def ledger_anchor_id(inventory: dict[str, Any]) -> str:
+def scriptorium_anchor_id(inventory: dict[str, Any]) -> str:
     return f"{inventory['pass_id']}:{inventory['target']['id']}"
 
 
@@ -522,9 +522,9 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
     surface_row = surface_classification_row(inventory)
     family_row = family_routing_row(inventory)
     worklist_row = worklist_row_for(inventory)
-    scryer_row = scryer_row_for(inventory)
+    watch_row = watch_row_for(inventory)
     source_row = source_correlation_row(inventory)
-    ledger_row = ledger_anchor_row(inventory)
+    scriptorium_row = scriptorium_anchor_row(inventory)
 
     text = ensure_table_row(text, "## Corpus Passes", pass_row, row_key=f"| {inventory['pass_id']} |")
     text = ensure_table_row(
@@ -543,8 +543,8 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
     )
     text = ensure_table_row(
         text,
-        "## Scryer Decision Support",
-        scryer_row,
+        "## Watch Decision Support",
+        watch_row,
         row_key=f"| {inventory['target']['id']} | {inventory['pass_id']} |",
     )
     if source_row:
@@ -560,12 +560,12 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
         family_row,
         row_key=f"| {inventory['target']['id']} | {', '.join(inventory['classification']['family_labels'])} |",
     )
-    text = ensure_table_row(text, "## Ledger Anchors", ledger_row, row_key=f"| {ledger_anchor_id(inventory)} |")
+    text = ensure_table_row(text, "## Scriptorium Anchors", scriptorium_row, row_key=f"| {scriptorium_anchor_id(inventory)} |")
     text = ensure_table_row(
         text,
         "## Current Hypotheses And Worklist",
         worklist_row,
-        row_key=f"| {inventory['pass_id']} | Scryer review for {inventory['target']['name']} |",
+        row_key=f"| {inventory['pass_id']} | Watch review for {inventory['target']['name']} |",
     )
     corpus_path.write_text(text, encoding="utf-8")
 
@@ -602,11 +602,11 @@ def surface_classification_row(inventory: dict[str, Any]) -> str:
     surfaces = ", ".join(inventory["classification"]["surfaces"]) or "none detected yet"
     return (
         f"| {inventory['target']['id']} | {inventory['pass_id']} | {surfaces} | | "
-        f"`{inventory['dossier_path']}` | Scryer intake dossier |"
+        f"`{inventory['dossier_path']}` | Watch intake dossier |"
     )
 
 
-def scryer_row_for(inventory: dict[str, Any]) -> str:
+def watch_row_for(inventory: dict[str, Any]) -> str:
     support = inventory["decision_support"]
     recipes = ", ".join(support["recommended_recipes"])
     gaps = "; ".join(support["coverage_gaps"])
@@ -638,15 +638,15 @@ def family_routing_row(inventory: dict[str, Any]) -> str:
 def worklist_row_for(inventory: dict[str, Any]) -> str:
     support = inventory["decision_support"]
     return (
-        f"| {inventory['pass_id']} | Scryer review for {inventory['target']['name']} | "
+        f"| {inventory['pass_id']} | Watch review for {inventory['target']['name']} | "
         f"`{inventory['dossier_path']}` | {support['next_decision']} | pending |"
     )
 
 
-def ledger_anchor_row(inventory: dict[str, Any]) -> str:
+def scriptorium_anchor_row(inventory: dict[str, Any]) -> str:
     return (
-        f"| {ledger_anchor_id(inventory)} | {inventory['target']['id']} | `{inventory['dossier_path']}` | "
-        f"Scryer intake decision support | open |"
+        f"| {scriptorium_anchor_id(inventory)} | {inventory['target']['id']} | `{inventory['dossier_path']}` | "
+        f"Watch intake decision support | open |"
     )
 
 
