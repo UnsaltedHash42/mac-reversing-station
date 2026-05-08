@@ -346,15 +346,75 @@ class DecompCache(object):
 
 DECOMPILE_TIMEOUT_SEC = 30
 
+# Layout of a CFConstantString on 64-bit macOS:
+#   isa     : 8 bytes
+#   flags   : 8 bytes  (4 + 4 padding)
+#   str ptr : 8 bytes  <-- this is what we want
+#   length  : 8 bytes
+_CFSTRING_STR_OFFSET = 0x10
+
+
+def _read_pointer(address, ptr_size=8):
+    """Read a little-endian pointer of ``ptr_size`` bytes at ``address``."""
+    if address is None:
+        return None
+    try:
+        mem = currentProgram.getMemory()
+        value = 0
+        for i in range(ptr_size):
+            b = mem.getByte(address.add(i)) & 0xFF
+            value |= b << (8 * i)
+        return value
+    except Exception:
+        return None
+
+
+def _block_name_at(address):
+    """Return the memory block name containing ``address``, or ''. """
+    try:
+        mem = currentProgram.getMemory()
+        block = mem.getBlock(address)
+        if block is None:
+            return ""
+        return block.getName() or ""
+    except Exception:
+        return ""
+
+
+def _read_cstring(address, max_len=512):
+    """Raw NUL-terminated read at ``address``, or None."""
+    if address is None:
+        return None
+    try:
+        mem = currentProgram.getMemory()
+        out = bytearray()
+        addr = address
+        for _ in range(max_len):
+            b = mem.getByte(addr) & 0xFF
+            if b == 0:
+                break
+            out.append(b)
+            addr = addr.add(1)
+        if out:
+            return bytes(out).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    return None
+
 
 def recover_string_at(address):
     """Return the C string at ``address``, or None.
 
-    Tries Ghidra-defined data first, then falls back to a raw byte
-    read up to 512 chars or the first NUL.
+    Resolves four common cases:
+      1. Ghidra-defined string data at the address (most precise).
+      2. A pointer in __objc_selrefs / __got that dereferences to a C string.
+      3. A CFConstantString in __cfstring (read the str ptr at +0x10).
+      4. A raw NUL-terminated byte sequence at the address.
     """
     if address is None:
         return None
+
+    # 1. Defined data Ghidra already understands.
     try:
         data = getDataAt(address)
     except Exception:
@@ -370,21 +430,63 @@ def recover_string_at(address):
                     return s
         except Exception:
             pass
-    try:
-        mem = currentProgram.getMemory()
-        out = bytearray()
-        addr = address
-        for _ in range(512):
-            b = mem.getByte(addr) & 0xFF
-            if b == 0:
-                break
-            out.append(b)
-            addr = addr.add(1)
-        if out:
-            return bytes(out).decode("utf-8", errors="replace")
-    except Exception:
-        return None
+
+    # 2/3. CFString or selref-style indirection: the address sits in a
+    # section that holds pointers, not chars. Heuristic: if the address
+    # is in __cfstring, dereference at +0x10. If it's in __objc_selrefs
+    # or __got, dereference at offset 0.
+    block_name = _block_name_at(address).lower()
+    addr_space = currentProgram.getAddressFactory().getDefaultAddressSpace()
+
+    if "cfstring" in block_name:
+        ptr = _read_pointer(address.add(_CFSTRING_STR_OFFSET))
+        if ptr:
+            try:
+                target = addr_space.getAddress(ptr)
+            except Exception:
+                target = None
+            s = _read_cstring(target)
+            if s:
+                return s
+
+    if "selref" in block_name or "got" in block_name or "auth_ptr" in block_name:
+        ptr = _read_pointer(address)
+        if ptr:
+            try:
+                target = addr_space.getAddress(ptr)
+            except Exception:
+                target = None
+            s = _read_cstring(target)
+            if s:
+                return s
+
+    # 4. Raw NUL-terminated read at the address.
+    s = _read_cstring(address)
+    if s:
+        return s
+
+    # Last-resort: maybe the address is a CFString but in a block whose
+    # name we did not recognize; try the +0x10 dereference unconditionally.
+    ptr = _read_pointer(address.add(_CFSTRING_STR_OFFSET))
+    if ptr:
+        try:
+            target = addr_space.getAddress(ptr)
+        except Exception:
+            target = None
+        s = _read_cstring(target)
+        if s:
+            return s
     return None
+
+
+def recover_objc_selector(decomp_iface, callsite_addr):
+    """Recover the selector string at an objc_msgSend-style callsite.
+
+    Reads arg 1 (the SEL) of the call. The varnode there is typically a
+    pointer into __objc_selrefs whose contents point into __objc_methname.
+    Returns the selector string, or None.
+    """
+    return recover_call_string_arg(decomp_iface, callsite_addr, 1)
 
 
 def _pcode_inputs_at(decomp_iface, callsite_addr):
@@ -496,8 +598,16 @@ def _resolve_varnode_to_string(vn):
     return None
 
 
-def _resolve_varnode_to_int(vn):
-    if vn is None:
+def _resolve_varnode_to_int(vn, depth=0):
+    """Resolve a Varnode to an integer constant, folding simple expressions.
+
+    Handles direct constants, COPY/CAST chains, and INT_OR / INT_AND /
+    INT_LEFT / INT_RIGHT / INT_XOR when both operands fold to constants.
+    Modern macOS APIs take flag args built as `RTLD_LAZY | RTLD_LOCAL`
+    or `kSecMatchLimitOne | kCFNumberSInt32Type` and the previous
+    "isConstant only" path returned None for those.
+    """
+    if vn is None or depth > 8:
         return None
     try:
         from ghidra.program.model.pcode import PcodeOp
@@ -511,13 +621,36 @@ def _resolve_varnode_to_int(vn):
     defn = vn.getDef()
     if defn is None:
         return None
-    if defn.getOpcode() in (PcodeOp.COPY, PcodeOp.CAST):
-        src = defn.getInput(0)
-        if src is not None and src.isConstant():
-            try:
-                return int(src.getOffset())
-            except Exception:
-                return None
+    op = defn.getOpcode()
+    if op in (PcodeOp.COPY, PcodeOp.CAST):
+        return _resolve_varnode_to_int(defn.getInput(0), depth + 1)
+    if defn.getNumInputs() < 2:
+        return None
+    a = _resolve_varnode_to_int(defn.getInput(0), depth + 1)
+    b = _resolve_varnode_to_int(defn.getInput(1), depth + 1)
+    if a is None or b is None:
+        return None
+    a &= (1 << 64) - 1
+    b &= (1 << 64) - 1
+    try:
+        if op == PcodeOp.INT_OR:
+            return a | b
+        if op == PcodeOp.INT_AND:
+            return a & b
+        if op == PcodeOp.INT_XOR:
+            return a ^ b
+        if op == PcodeOp.INT_LEFT:
+            return (a << b) & ((1 << 64) - 1)
+        if op == PcodeOp.INT_RIGHT:
+            return a >> b
+        if op == PcodeOp.INT_ADD:
+            return (a + b) & ((1 << 64) - 1)
+        if op == PcodeOp.INT_SUB:
+            return (a - b) & ((1 << 64) - 1)
+        if op == PcodeOp.INT_MULT:
+            return (a * b) & ((1 << 64) - 1)
+    except Exception:
+        return None
     return None
 
 
@@ -560,6 +693,92 @@ def recover_call_arg_fast(callsite_addr, arg_index=0):
 # --------------------------------------------------------------------------
 # Declarative API enrichment
 # --------------------------------------------------------------------------
+
+_APPLE_FRAMEWORK_PREFIXES = (
+    "_CF", "CF", "_NS", "NS", "_OS_", "_OBJC_", "OBJC_",
+    "_dispatch_", "dispatch_", "_pthread_", "pthread_",
+    "_xpc_", "xpc_", "__Z", "__Block",
+)
+
+
+def is_apple_framework_function(name):
+    """Heuristic: True if ``name`` looks like an Apple framework symbol.
+
+    Used to silence tier-B function-name regex matches against framework
+    thunks that have nothing to do with the target's own logic.
+    """
+    if not name:
+        return False
+    for prefix in _APPLE_FRAMEWORK_PREFIXES:
+        if name.startswith(prefix):
+            return True
+    return False
+
+
+class ObjCSelectorSpec(object):
+    """Declarative spec for matching objc_msgSend callsites by selector.
+
+    selector         the selector string to match at arg 1
+    anchor_kind      tier-A anchor_kind for matching rows
+    evidence_label   key= label for the recovered selector (default: 'selector')
+    """
+
+    __slots__ = ("selector", "anchor_kind", "evidence_label")
+
+    def __init__(self, selector, anchor_kind=None, evidence_label="selector"):
+        self.selector = selector
+        self.anchor_kind = anchor_kind or ("objc_msg_" +
+                                           selector.replace(":", "_").replace(" ", "_"))
+        self.evidence_label = evidence_label
+
+
+def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
+                        max_per_selector=64):
+    """For each selector spec, walk objc_msgSend callsites whose recovered
+    arg-1 matches the selector, and emit a tier-A row per callsite.
+
+    objc_msgSend is invoked through several symbols depending on linkage
+    and ARC. We enumerate all of them and recover the selector at each
+    callsite, then bucket by selector spec.
+    """
+    own_cache = decomp_cache is None
+    if own_cache:
+        decomp_cache = DecompCache()
+    try:
+        decomp = decomp_cache.open()
+        # Build a quick selector -> spec map.
+        wanted = {s.selector: s for s in selector_specs}
+        per_selector_count = {s.selector: 0 for s in selector_specs}
+
+        for msgsend_name in ("_objc_msgSend", "objc_msgSend",
+                             "_objc_msgSendSuper2", "objc_msgSendSuper2",
+                             "_objc_msgSend_stret", "objc_msgSend_stret"):
+            fn = find_external(msgsend_name)
+            if fn is None:
+                continue
+            for caller, site in callers_of(fn):
+                if caller is None:
+                    continue
+                sel = recover_objc_selector(decomp, site) if decomp else None
+                if not sel:
+                    continue
+                spec = wanted.get(sel)
+                if spec is None:
+                    continue
+                if per_selector_count[sel] >= max_per_selector:
+                    continue
+                evidence = "msgsend=%s; site=%s; %s=%s" % (
+                    msgsend_name.lstrip("_"), format_addr(site),
+                    spec.evidence_label, sel,
+                )
+                writer.add("A", spec.anchor_kind, caller.getName(),
+                           format_addr(site), evidence)
+                per_selector_count[sel] += 1
+        return per_selector_count
+    finally:
+        if own_cache:
+            decomp_cache.dispose()
+
 
 class APISpec(object):
     """Declarative spec for one API to enrich at every callsite.
@@ -728,7 +947,7 @@ class StringRule(object):
 
 def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
                     function_index=None, enrich=None, api_specs=None,
-                    fast_mode=False):
+                    objc_specs=None, fast_mode=False, apple_filter=True):
     """Convenience runner for the simpler regex-bag scripts.
 
     Walks the string index once per rule (cheap; index is cached) and
@@ -770,6 +989,8 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
             emitted = 0
             seen = set()
             for name, addr, _fn in function_index.matching(rule.regex):
+                if apple_filter and is_apple_framework_function(name):
+                    continue
                 if rule.accept is not None and not rule.accept(name):
                     continue
                 if name in seen:
@@ -786,15 +1007,21 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
     if function_rules and function_index is not None and function_index.truncated:
         writer.warn("function_index_truncated_at_%d" % function_index.max_functions)
 
-    if api_specs:
+    if api_specs or objc_specs:
         cache = DecompCache(fast_mode=fast_mode)
         try:
-            counts = enrich_callsite_args(writer, api_specs, decomp_cache=cache)
-            covered = sum(1 for v in counts.values() if v > 0)
-            writer.warn("api_callsites=%d/%d apis"
-                        % (sum(counts.values()), len(counts)))
-            if covered == 0:
-                writer.warn("no_api_callsites_resolved")
+            if api_specs:
+                counts = enrich_callsite_args(writer, api_specs, decomp_cache=cache)
+                covered = sum(1 for v in counts.values() if v > 0)
+                writer.warn("api_callsites=%d/%d apis"
+                            % (sum(counts.values()), len(counts)))
+                if covered == 0:
+                    writer.warn("no_api_callsites_resolved")
+            if objc_specs:
+                obj_counts = enrich_objc_msgsend(writer, objc_specs,
+                                                 decomp_cache=cache)
+                writer.warn("objc_msgsend_callsites=%d/%d selectors"
+                            % (sum(obj_counts.values()), len(obj_counts)))
         finally:
             cache.dispose()
 

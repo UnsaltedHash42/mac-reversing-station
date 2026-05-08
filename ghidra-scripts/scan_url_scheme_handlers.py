@@ -34,7 +34,7 @@
 
 import re
 
-from _re_lib import APISpec, StringRule, run_string_scan
+from _re_lib import APISpec, ObjCSelectorSpec, StringRule, run_string_scan
 
 
 API_SPECS = [
@@ -50,6 +50,28 @@ API_SPECS = [
             anchor_kind="cfurl_create_with_string_callsite", evidence_label="url"),
     APISpec("CFURLCreateWithBytes", arg_index=1, recover_kind="none",
             anchor_kind="cfurl_create_with_bytes_callsite"),
+]
+
+# Most URL-handler dispatch goes through ObjC. Recover the selector at
+# the callsite to find every entry point and every place the bundle
+# itself opens a URL.
+OBJC_SPECS = [
+    ObjCSelectorSpec("application:openURL:",
+                     anchor_kind="application_openurl_callsite"),
+    ObjCSelectorSpec("application:openURLs:",
+                     anchor_kind="application_openurls_callsite"),
+    ObjCSelectorSpec("application:openFile:",
+                     anchor_kind="application_openfile_callsite"),
+    ObjCSelectorSpec("handleURL:",
+                     anchor_kind="handle_url_callsite"),
+    ObjCSelectorSpec("getUrl:withReplyEvent:",
+                     anchor_kind="apple_event_geturl_callsite"),
+    ObjCSelectorSpec("openURL:",
+                     anchor_kind="objc_openurl_callsite"),
+    ObjCSelectorSpec("openURL:configuration:completionHandler:",
+                     anchor_kind="workspace_openurl_callsite"),
+    ObjCSelectorSpec("setEventHandler:andSelector:forEventClass:andEventID:",
+                     anchor_kind="appleeventmanager_seteventhandler_callsite"),
 ]
 
 
@@ -82,4 +104,5 @@ run_string_scan(
                    max_anchors=12, evidence_label="function"),
     ],
     api_specs=API_SPECS,
+    objc_specs=OBJC_SPECS,
 )

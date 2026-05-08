@@ -202,3 +202,21 @@ Recipe ID: `url-scheme-hijack`
 - **Run:** `Skills/offensive-macos-hunt-url-scheme-hijack`, `ghidra-scripts/scan_url_scheme_handlers.py`.
 - **Expected outputs:** Tier-A `ls_set_default_handler_callsite` + scheme arg, `cfurl_create_with_string_callsite` + url arg; (scheme, action, validation) inventory from decompiled `application:openURL:` impls.
 - **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path.
+
+## mig-subsystem-audit
+
+Recipe ID: `mig-subsystem-audit`
+
+- **Use when:** A daemon exposes a MachService and dispatches incoming messages through MIG-generated stubs (`_X<routine>` thunks plus a `mig_subsystem_t` table), or you're auditing kernel MIG (host_priv, task, mach_port subsystems).
+- **Run:** `Skills/offensive-macos-hunt-mig-subsystem`, `ghidra-scripts/scan_launchd_machservice_topology.py`, `ghidra-scripts/dump_xpc_listeners.py`.
+- **Expected outputs:** Routine number inventory, per-routine validation classification (audit-token check, port-right type check, variable-length size bound), reachability test results from a Mach-port probe.
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path. **Lab safety:** kernel MIG work on crash-test VM only.
+
+## keychain-access-group-audit
+
+Recipe ID: `keychain-access-group-audit`
+
+- **Use when:** A binary declares `keychain-access-groups` in its entitlements or a helper writes to the keychain via `SecItemAdd` / `SecKeychainAddGenericPassword` and another bundle on the system shares the access group.
+- **Run:** `Skills/offensive-macos-hunt-keychain-access-group`, `ghidra-scripts/scan_persistent_authorization.py`, `ghidra-scripts/dump_xpc_listeners.py`.
+- **Expected outputs:** (writer, reader, item, ACL) inventory across bundles in the same access group; classification of each item by sensitivity and ACL strictness; cross-bundle reachability results from a probe app.
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path.
