@@ -36,6 +36,32 @@ trigger_phrases:
 - Run `lsof` or an equivalent process/socket check after a new daemon action so you know what is alive.
 - Commit or checkpoint frequently when working in a real findings repo. In this `skillz/` directory, there may be no git repo; if so, record progress in docs and smoke output.
 
+## Host-Action Approval
+
+The station runs across three environments with different safety expectations:
+
+- **Workstation**: the operator's daily-driver Mac. Cursor cockpit, project clones, skills, scripts, ssh client. State on the workstation matters; agents should never modify it without explicit operator approval.
+- **Lab host**: the remote macOS machine reachable over SSH, hosting Ghidra and the MCP servers. Disposability is a per-project decision, recorded in `LAB_SAFETY.md` under the Lab Disposability section.
+- **Lab VM**: a disposable macOS VM dedicated to dynamic research. Agents may attach LLDB, restart services, send XPC traffic, reset TCC, modify keychains, and trigger crash-prone behavior here freely; record every action in `VM_ACTIONS.md`.
+
+Disposability rules:
+
+- When `lab_disposable: true` in `LAB_SAFETY.md`, dynamic actions on the lab host run without per-action approval, but the agent must (a) recommend a snapshot before high-disruption work and (b) append every action to `VM_ACTIONS.md`.
+- When `lab_disposable: false` (or the field is missing), treat the lab host like the workstation — destructive actions need the same explicit operator approval the workstation rules below require.
+- The workstation is never assumed disposable. Any agent action affecting workstation state must ask first.
+
+Categories that require explicit operator approval before the agent runs them on the workstation or any non-disposable host:
+
+- Writes outside the project clone's gitignored work areas (`findings/`, `targets/`, `artifacts/`, `pocs/`, `chains/`, `sources/apple/`, the Apple source cache).
+- Edits to `~/.cursor/`, `~/.ssh/`, system `/Library/Launch{Daemons,Agents}/`, system frameworks, `/etc/`, or anything under SIP-protected paths.
+- Reboots, sleeps, login state changes, or user/group changes.
+- Package installs, `brew install`, `softwareupdate`, kernel extension load/unload.
+- Network changes: VPN config, proxy, firewall, DNS resolvers.
+- Deletions or mass renames anywhere outside the project clone's gitignored work areas.
+- TCC, keychain, or trust-store edits.
+
+When the agent is unsure whether an action is workstation-safe, the rule is to ask. "Run on the lab VM" is the default answer for anything dynamic; "ask the operator" is the default answer for anything workstation-side.
+
 ## L1-L6 Failure Taxonomy
 
 | Level | Meaning | Diagnosis | Remediation |

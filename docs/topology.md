@@ -45,6 +45,18 @@ flowchart LR
 
 The primary lab host is the only required remote host. The other roles improve evidence quality and reduce risk during destructive testing.
 
+## Environment Disposability
+
+The station runs across three environments with different safety expectations. The disposability axis is recorded per project in `LAB_SAFETY.md` (`lab_disposable: true|false`) and enforced by the agent-discipline skill.
+
+| Environment | Examples | Disposable? | Dynamic Actions |
+|-------------|----------|-------------|-----------------|
+| Workstation | Operator's daily-driver Mac, Cursor cockpit, project clones | No, ever | Always require explicit operator approval before any state-changing action outside gitignored work areas |
+| Lab host | `<lab-host>` running Ghidra and MCP servers | Project decision | When `lab_disposable: true`, dynamic actions run freely with snapshot recommendations and `VM_ACTIONS.md` logging; when `false`, treat like workstation |
+| Lab VM | Dedicated disposable macOS VM | Always disposable by design | Free to attach LLDB, restart services, reset TCC, edit keychains, trigger crashes; every action is appended to `VM_ACTIONS.md` |
+
+See `Skills/offensive-macos-agent-discipline/SKILL.md` Host-Action Approval section for the full set of categories that require approval, and `templates/findings-repo/LAB_SAFETY.md` for the Lab Disposability fields the project records.
+
 ## MCP Servers
 
 ### `ghidra-mcp`
