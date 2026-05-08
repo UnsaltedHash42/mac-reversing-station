@@ -30,6 +30,13 @@ Subcommands:
     triage.py validate [PATH]         # validate one file, or all if omitted
     triage.py render                  # regenerate INDEX.md from candidate files
     triage.py show C-NNN              # print one candidate as readable JSON
+
+    triage.py import-tsv <path.tsv>
+        --pass-id PASS-NNN
+        [--target TARGET-ID]
+        [--vuln-class <class>]
+        [--severity medium]
+        [--include-tier-b]
 """
 
 from __future__ import annotations
@@ -415,6 +422,124 @@ def cmd_render(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------------
+# Import from Ghidra TSV
+# --------------------------------------------------------------------------
+
+def cmd_import_tsv(args: argparse.Namespace) -> int:
+    """Import tier-A (and optionally B) rows from a Ghidra scan TSV as candidates."""
+    tsv_path = Path(args.tsv)
+    if not tsv_path.is_file():
+        print(f"ERROR: {tsv_path} not found", file=sys.stderr)
+        return 2
+
+    lines = tsv_path.read_text(encoding="utf-8").strip().splitlines()
+    if not lines:
+        print("ERROR: empty TSV", file=sys.stderr)
+        return 2
+
+    header = lines[0].split("\t")
+    expected = ["target", "tier", "anchor_kind", "name", "address", "evidence"]
+    if header != expected:
+        print(f"ERROR: unexpected header. Got: {header}", file=sys.stderr)
+        print(f"Expected: {expected}", file=sys.stderr)
+        return 2
+
+    tiers_to_import = {"A"}
+    if args.include_tier_b:
+        tiers_to_import.add("B")
+
+    candidates_dir(create=True)
+    created = 0
+    skipped = 0
+
+    for line in lines[1:]:
+        fields = line.split("\t")
+        if len(fields) < 6:
+            skipped += 1
+            continue
+        target, tier, anchor_kind, name, address, evidence = fields[0], fields[1], fields[2], fields[3], fields[4], fields[5]
+
+        if tier not in tiers_to_import:
+            skipped += 1
+            continue
+
+        cid = next_candidate_id()
+        title = f"{anchor_kind}: {name}" if name != "-" else anchor_kind
+        if len(title) > 80:
+            title = title[:77] + "..."
+
+        data: dict[str, Any] = {
+            "id": cid,
+            "pass_id": args.pass_id,
+            "target_id": args.target or target,
+            "title": title,
+            "vuln_class": args.vuln_class or _infer_vuln_class(anchor_kind),
+            "status": "scan-hit",
+            "severity": args.severity,
+            "primary_artifact": str(tsv_path),
+            "anchor": {
+                "tier": tier,
+                "kind": anchor_kind,
+                "name": name,
+                "address": address,
+            },
+            "evidence": [{
+                "kind": "scan-tsv",
+                "path": str(tsv_path),
+                "added_at": now_iso(),
+                "note": evidence,
+            }],
+            "history": [{"status": "scan-hit", "at": now_iso()}],
+            "next_action": "decompile and verify",
+        }
+
+        errors = validate_one(data, origin=cid)
+        if errors:
+            for err in errors:
+                print(f"WARN: {err} (skipping row)", file=sys.stderr)
+            skipped += 1
+            continue
+
+        path = candidate_path(cid)
+        save_candidate(path, data)
+        print(f"  created {cid}: {title}")
+        created += 1
+
+    print(f"\nImported {created} candidate(s), skipped {skipped} row(s).")
+    return 0
+
+
+def _infer_vuln_class(anchor_kind: str) -> str:
+    """Best-effort mapping from anchor_kind to ontology vuln class."""
+    kind_lower = anchor_kind.lower()
+    if "xpc" in kind_lower or "listener" in kind_lower or "mach_service" in kind_lower:
+        return "xpc-client-validation"
+    if "wrong_door" in kind_lower or "should_accept" in kind_lower:
+        return "wrong-door"
+    if "audit_token" in kind_lower or "sectask" in kind_lower:
+        return "xpc-client-validation"
+    if "defaults" in kind_lower or "cfprefs" in kind_lower or "nsuserdefaults" in kind_lower:
+        return "defaults-bypass"
+    if "privilege" in kind_lower or "smjobbless" in kind_lower or "auth" in kind_lower:
+        return "privileged-helper-authz"
+    if "es_" in kind_lower or "endpoint" in kind_lower:
+        return "endpoint-security"
+    if "tcc" in kind_lower or "privacy" in kind_lower:
+        return "tcc-prompt"
+    if "iokit" in kind_lower or "ioconnect" in kind_lower:
+        return "iokit-userclient"
+    if "dlopen" in kind_lower or "framework" in kind_lower:
+        return "private-framework-hijack"
+    if "url" in kind_lower or "scheme" in kind_lower:
+        return "url-scheme-hijack"
+    if "bookmark" in kind_lower or "keychain" in kind_lower or "sandbox" in kind_lower:
+        return "persistent-authorization"
+    if "exec" in kind_lower or "system" in kind_lower or "popen" in kind_lower:
+        return "privileged-helper-authz"
+    return "unclassified"
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -471,6 +596,18 @@ def build_parser() -> argparse.ArgumentParser:
     p_show = sub.add_parser("show", help="print one candidate as JSON")
     p_show.add_argument("id")
     p_show.set_defaults(func=cmd_show)
+
+    p_import = sub.add_parser("import-tsv",
+                              help="batch-create candidates from a Ghidra scan TSV")
+    p_import.add_argument("tsv", help="path to a Ghidra scan TSV file")
+    p_import.add_argument("--pass-id", required=True)
+    p_import.add_argument("--target", help="override target_id (default: from TSV)")
+    p_import.add_argument("--vuln-class", help="override vuln class (default: inferred from anchor_kind)")
+    p_import.add_argument("--severity", default="medium",
+                          choices=["info", "low", "medium", "high", "critical"])
+    p_import.add_argument("--include-tier-b", action="store_true",
+                          help="also import tier-B rows (default: tier-A only)")
+    p_import.set_defaults(func=cmd_import_tsv)
 
     return parser
 

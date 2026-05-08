@@ -37,7 +37,7 @@ import re
 from ghidra.program.model.symbol import SourceType, SymbolType
 from ghidra.program.model.listing import Function
 
-MAX_ANCHORS = 200
+MAX_ANCHORS = int(os.environ.get("MACRE_MAX_ANCHORS", "200"))
 MIN_SCORE = 2
 IN_DEGREE_PERCENTILE = 0.95
 SIDECAR_DIR = None  # None -> auto

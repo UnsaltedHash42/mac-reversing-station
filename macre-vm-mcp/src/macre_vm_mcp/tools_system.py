@@ -241,10 +241,16 @@ def register(mcp: FastMCP) -> None:
                 result["entitlements_parse_error"] = str(exc)
 
         # Match path to any launchd plist that names it.
+        import pathlib
+        search_dirs = [
+            "/Library/LaunchDaemons", "/Library/LaunchAgents",
+            "/System/Library/LaunchDaemons", "/System/Library/LaunchAgents",
+        ]
+        user_agents = str(pathlib.Path.home() / "Library/LaunchAgents")
+        if pathlib.Path(user_agents).is_dir():
+            search_dirs.append(user_agents)
         launchd_match = run(
-            ["/usr/bin/grep", "-l", "-r", "-F", path,
-             "/Library/LaunchDaemons", "/Library/LaunchAgents",
-             "/System/Library/LaunchDaemons", "/System/Library/LaunchAgents"],
+            ["/usr/bin/grep", "-l", "-r", "-F", path] + search_dirs,
             timeout=20.0,
         )
         if launchd_match.stdout.strip():

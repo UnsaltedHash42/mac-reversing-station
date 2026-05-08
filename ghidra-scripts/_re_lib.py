@@ -24,6 +24,7 @@
 #
 # @runtime Jython
 
+import os
 import re
 import sys
 
@@ -33,10 +34,12 @@ ANCHOR_HEADER = ("target", "tier", "anchor_kind", "name", "address", "evidence")
 # Hard cap on the per-scan string index. Hitting this is recorded in the
 # stderr summary and surfaced via AnchorWriter.summary() so the agent can
 # notice when a row count is bounded by the cap rather than by reality.
-DEFAULT_MAX_STRINGS = 20000
+# Override via env: MACRE_MAX_STRINGS=50000
+DEFAULT_MAX_STRINGS = int(os.environ.get("MACRE_MAX_STRINGS", "20000"))
 
 # Hard cap on the per-scan function-name iteration. Same rationale.
-DEFAULT_MAX_FUNCTIONS = 50000
+# Override via env: MACRE_MAX_FUNCTIONS=100000
+DEFAULT_MAX_FUNCTIONS = int(os.environ.get("MACRE_MAX_FUNCTIONS", "50000"))
 
 
 # --------------------------------------------------------------------------
@@ -344,7 +347,7 @@ class DecompCache(object):
         self._disposed = True
 
 
-DECOMPILE_TIMEOUT_SEC = 30
+DECOMPILE_TIMEOUT_SEC = int(os.environ.get("MACRE_DECOMPILE_TIMEOUT", "30"))
 
 # Layout of a CFConstantString on 64-bit macOS:
 #   isa     : 8 bytes
@@ -732,8 +735,11 @@ class ObjCSelectorSpec(object):
         self.evidence_label = evidence_label
 
 
+DEFAULT_MAX_PER_SELECTOR = int(os.environ.get("MACRE_MAX_PER_SELECTOR", "64"))
+
+
 def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
-                        max_per_selector=64):
+                        max_per_selector=DEFAULT_MAX_PER_SELECTOR):
     """For each selector spec, walk objc_msgSend callsites whose recovered
     arg-1 matches the selector, and emit a tier-A row per callsite.
 
@@ -805,8 +811,11 @@ class APISpec(object):
         self.evidence_label = evidence_label or recover_kind
 
 
+DEFAULT_MAX_PER_API = int(os.environ.get("MACRE_MAX_PER_API", "64"))
+
+
 def enrich_callsite_args(writer, api_specs, decomp_cache=None,
-                         max_per_api=64):
+                         max_per_api=DEFAULT_MAX_PER_API):
     """For each API spec, walk callers and emit one tier-A row per callsite.
 
     The tier-A row's `name` is the calling function. The `address` is
