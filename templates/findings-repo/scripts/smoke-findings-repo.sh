@@ -21,8 +21,10 @@ for path in \
     "SCRIPTORIUM.md" \
     "CHRONICLE.md" \
     "VM_ACTIONS.md" \
+    "POC_SCAFFOLDING.md" \
     "HANDOFF.md.template" \
     "machines.md.template" \
+    "templates/poc/README.md.template" \
     ".cursor/rules/rule-analysis.mdc" \
     "findings/analysis" \
     "findings/reports" \
@@ -55,6 +57,8 @@ grep -q "Anchor ID" "${ROOT}/SCRIPTORIUM.md" || fail "SCRIPTORIUM.md must includ
 grep -q "Time UTC" "${ROOT}/CHRONICLE.md" || fail "CHRONICLE.md must include Time UTC"
 grep -q "Action Taxonomy" "${ROOT}/VM_ACTIONS.md" || fail "VM_ACTIONS.md must include Action Taxonomy"
 grep -q "Snapshot Before" "${ROOT}/VM_ACTIONS.md" || fail "VM_ACTIONS.md must include Snapshot Before column"
+grep -q "PoC IDs" "${ROOT}/POC_SCAFFOLDING.md" || fail "POC_SCAFFOLDING.md must include PoC IDs section"
+grep -q "Status Values" "${ROOT}/POC_SCAFFOLDING.md" || fail "POC_SCAFFOLDING.md must include Status Values section"
 
 if [[ ! -d "${ROOT}/.git" ]]; then
     echo "WARN: git is not initialized yet. Run: git init"

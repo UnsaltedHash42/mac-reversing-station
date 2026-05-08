@@ -142,4 +142,8 @@ authored proofs.
   for stitching candidate primitives into vulnerability chains, rating
   exploitability, and identifying the next experiment that advances each
   chain toward a PoC.
+- `Skills/offensive-macos-poc-authoring` — workflow for transitioning a
+  confirmed candidate or chain into a reproducible PoC harness in the
+  project clone's gitignored `pocs/` tree, with reliability capture,
+  evidence linking, and Scriptorium/Chronicle anchoring.
 
