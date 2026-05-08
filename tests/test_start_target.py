@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -11,6 +12,18 @@ from plistlib import dump
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts/start-target.py"
 TEMPLATE = REPO / "templates/findings-repo"
+
+
+def load_start_target_module():
+    """Load scripts/start-target.py as a module so helper functions can be unit-tested."""
+    spec = importlib.util.spec_from_file_location("start_target", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault("start_target", module)
+    spec.loader.exec_module(module)
+    return module
+
+
+start_target_module = load_start_target_module()
 
 
 class TestStartTarget(unittest.TestCase):
@@ -292,6 +305,219 @@ class TestStartTarget(unittest.TestCase):
         self.assertIn("target path does not exist", proc.stderr)
         corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
         self.assertNotIn("PASS-404", corpus)
+
+    def test_bare_daemon_named_binary_classified_as_daemon(self) -> None:
+        binary = self.tmp / "examplesd"
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | 0o111)
+
+        proc = self.run_script(str(binary), "--pass-id", "PASS-100")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-100-examplesd-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(data["target"]["kind"], "daemon")
+        self.assertIn("os-component", data["classification"]["surfaces"])
+        self.assertIn("apple-os-components", data["classification"]["family_labels"])
+
+    def test_apple_bundle_identifier_marks_apple_signed_and_os_component(self) -> None:
+        app = self.tmp / "ExampleApple.app"
+        contents = app / "Contents"
+        macos = contents / "MacOS"
+        macos.mkdir(parents=True)
+        with (contents / "Info.plist").open("wb") as fh:
+            dump(
+                {
+                    "CFBundleIdentifier": "com.apple.example",
+                    "CFBundleExecutable": "ExampleApple",
+                    "CFBundleShortVersionString": "1.0",
+                },
+                fh,
+            )
+        executable = macos / "ExampleApple"
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(executable.stat().st_mode | 0o111)
+
+        proc = self.run_script(str(app), "--pass-id", "PASS-101")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-101-exampleapple-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("apple-signed", data["classification"]["surfaces"])
+        self.assertIn("os-component", data["classification"]["surfaces"])
+        self.assertIn("apple-os-components", data["classification"]["family_labels"])
+        self.assertTrue(data["os_component"]["apple_signed"])
+        self.assertEqual(data["os_component"]["authority"], "bundle-identifier-heuristic")
+
+    def test_system_extension_inside_app_bundle_records_component_and_surface(self) -> None:
+        app = self.make_app()
+        sysext_root = app / "Contents/Library/SystemExtensions/com.example.sysext.systemextension"
+        sysext_macos = sysext_root / "Contents/MacOS"
+        sysext_macos.mkdir(parents=True)
+        with (sysext_root / "Contents/Info.plist").open("wb") as fh:
+            dump(
+                {
+                    "CFBundleIdentifier": "com.example.sysext",
+                    "CFBundleExecutable": "ExampleSysExt",
+                },
+                fh,
+            )
+        executable = sysext_macos / "ExampleSysExt"
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(executable.stat().st_mode | 0o111)
+
+        proc = self.run_script(str(app), "--pass-id", "PASS-102")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-102-example-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        kinds = [component["kind"] for component in data["components"]]
+        self.assertIn("system-extension", kinds)
+        self.assertIn("system-extension", data["classification"]["surfaces"])
+        self.assertIn("os-component", data["classification"]["surfaces"])
+        self.assertIn("apple-os-components", data["classification"]["family_labels"])
+        # No double-counting: the system extension's MacOS executable is not also recorded as `executable`.
+        self.assertFalse(
+            any(
+                component["path"]
+                == "Contents/Library/SystemExtensions/com.example.sysext.systemextension/Contents/MacOS/ExampleSysExt"
+                and component["kind"] == "executable"
+                for component in data["components"]
+            )
+        )
+
+    def test_endpoint_security_named_extension_marks_es_client_surface(self) -> None:
+        app = self.make_app()
+        sysext_root = app / "Contents/Library/SystemExtensions/com.example.endpointsecurity.systemextension"
+        sysext_macos = sysext_root / "Contents/MacOS"
+        sysext_macos.mkdir(parents=True)
+        with (sysext_root / "Contents/Info.plist").open("wb") as fh:
+            dump({"CFBundleIdentifier": "com.example.endpointsecurity"}, fh)
+
+        proc = self.run_script(str(app), "--pass-id", "PASS-103")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-103-example-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("endpoint-security-client", data["classification"]["surfaces"])
+
+    def test_launchd_plist_with_machservices_records_structured_data(self) -> None:
+        app = self.make_app()
+        launchd_dir = app / "Contents/Library/LaunchDaemons"
+        launchd_dir.mkdir(parents=True)
+        with (launchd_dir / "com.example.daemon.plist").open("wb") as fh:
+            dump(
+                {
+                    "Label": "com.example.daemon",
+                    "ProgramArguments": ["/Library/Application Support/Example/daemon"],
+                    "MachServices": {
+                        "com.example.daemon.service": True,
+                        "com.example.daemon.privileged": True,
+                    },
+                    "RunAtLoad": True,
+                },
+                fh,
+            )
+
+        proc = self.run_script(str(app), "--pass-id", "PASS-104")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-104-example-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        launchd_components = [
+            component for component in data["components"] if component["kind"] == "launchd-plist"
+        ]
+        self.assertTrue(launchd_components)
+        services = launchd_components[0].get("launchd", {}).get("mach_services", [])
+        self.assertIn("com.example.daemon.service", services)
+        self.assertIn("com.example.daemon.privileged", services)
+        self.assertIn("launchd-machservices", data["classification"]["surfaces"])
+        self.assertIn(
+            "com.example.daemon.privileged",
+            data["os_component"]["mach_services"],
+        )
+
+    def test_framework_target_kind_marks_os_component_surface(self) -> None:
+        framework = self.tmp / "Example.framework"
+        versions_a = framework / "Versions/A"
+        versions_a.mkdir(parents=True)
+        (versions_a / "Example").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        (framework / "Example").symlink_to("Versions/A/Example")
+        (framework / "Versions/Current").symlink_to("A")
+
+        proc = self.run_script(str(framework), "--pass-id", "PASS-105")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-105-example-framework-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(data["target"]["kind"], "framework")
+        self.assertIn("os-component", data["classification"]["surfaces"])
+        self.assertIn("apple-os-components", data["classification"]["family_labels"])
+
+
+class TestStartTargetHelpers(unittest.TestCase):
+    """Pure-function tests for U1 helpers (parsing logic, no subprocess required)."""
+
+    def test_parse_dyld_dependencies_extracts_private_framework_and_cache(self) -> None:
+        sample = """
+/usr/bin/example:
+\t/System/Library/PrivateFrameworks/Quagmire.framework/Quagmire (compatibility version 1.0.0, current version 1.0.0)
+\t/System/Library/Frameworks/Foundation.framework/Foundation (compatibility version 300.0.0, current version 1900.0.0)
+\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1311.0.0)
+""".strip("\n")
+        result = start_target_module.parse_dyld_dependencies(sample)
+
+        self.assertTrue(any("Quagmire" in dep for dep in result["all_deps"]))
+        self.assertTrue(any("PrivateFrameworks" in dep for dep in result["private_framework_deps"]))
+        self.assertTrue(result["dyld_cache_origin"])
+        self.assertTrue(any("/System/Library/" in path for path in result["dyld_cache_paths"]))
+
+    def test_parse_dyld_dependencies_handles_empty_input(self) -> None:
+        result = start_target_module.parse_dyld_dependencies("")
+
+        self.assertEqual(result["all_deps"], [])
+        self.assertEqual(result["private_framework_deps"], [])
+        self.assertFalse(result["dyld_cache_origin"])
+
+    def test_apply_codesign_evidence_marks_apple_signed_for_software_signing(self) -> None:
+        sample = "Authority=Software Signing\nTeamIdentifier=APPLE_TEAM\nIdentifier=com.apple.example\n"
+        info = start_target_module.apply_codesign_evidence(
+            {"apple_signed": False, "authority": "", "team_id": "", "evidence": ""},
+            sample,
+        )
+
+        self.assertTrue(info["apple_signed"])
+        self.assertEqual(info["authority"], "Software Signing")
+        self.assertEqual(info["team_id"], "APPLE_TEAM")
+        self.assertIn("Software Signing", info["evidence"])
+
+    def test_apply_codesign_evidence_does_not_mark_third_party_authority(self) -> None:
+        sample = "Authority=Developer ID Application: Acme\nTeamIdentifier=ACME123\n"
+        info = start_target_module.apply_codesign_evidence(
+            {"apple_signed": False, "authority": "", "team_id": "", "evidence": ""},
+            sample,
+        )
+
+        self.assertFalse(info["apple_signed"])
+        self.assertEqual(info["team_id"], "ACME123")
 
 
 if __name__ == "__main__":

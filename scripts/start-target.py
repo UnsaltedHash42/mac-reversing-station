@@ -10,6 +10,7 @@ import os
 import plistlib
 import re
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,6 +19,16 @@ from urllib.parse import urlsplit, urlunsplit
 
 
 EXECUTABLE_LIMIT = 200
+
+OS_COMPONENT_BUNDLE_SUFFIXES = (
+    ".xpc",
+    ".systemextension",
+    ".networkextension",
+    ".appex",
+    ".dext",
+)
+
+DAEMON_NAME_HINTS = ("daemon", "helper", "service")
 
 
 @dataclass(frozen=True)
@@ -151,19 +162,22 @@ def inventory_target(local_path: Path, source_path: Path, source_metadata: dict[
     bundle = read_bundle_metadata(local_path)
     components = find_components(local_path, bundle)
     electron = detect_electron(local_path)
-    surfaces = classify_surfaces(local_path, bundle, components, electron)
+    kind = target_kind(local_path)
+    os_component = build_os_component_facts(local_path, bundle, kind, components)
+    surfaces = classify_surfaces(local_path, bundle, components, electron, kind, os_component)
     family_labels = classify_families(local_path, surfaces)
 
     return {
         "target": {
             "name": local_path.name,
-            "kind": target_kind(local_path),
+            "kind": kind,
             "source_path": str(source_path),
             "local_path": str(local_path),
         },
         "bundle": bundle,
         "components": components,
         "electron": electron,
+        "os_component": os_component,
         "source_correlation": build_source_correlation(source_metadata),
         "classification": {
             "surfaces": surfaces,
@@ -173,13 +187,28 @@ def inventory_target(local_path: Path, source_path: Path, source_metadata: dict[
 
 
 def target_kind(path: Path) -> str:
-    if path.is_dir() and path.suffix == ".app":
-        return "app-bundle"
-    if path.is_dir() and path.suffix == ".framework":
-        return "framework"
+    if path.is_dir():
+        suffix_kinds = {
+            ".app": "app-bundle",
+            ".framework": "framework",
+            ".systemextension": "system-extension",
+            ".networkextension": "network-extension",
+            ".appex": "appex",
+            ".dext": "driverkit-extension",
+            ".xpc": "xpc-service",
+        }
+        if path.suffix in suffix_kinds:
+            return suffix_kinds[path.suffix]
     if path.suffix in {".pkg", ".dmg"}:
         return "installer"
     if path.is_file():
+        name = path.name.lower()
+        if any(hint in name for hint in DAEMON_NAME_HINTS):
+            return "daemon"
+        if name.endswith("agent"):
+            return "agent"
+        if len(name) >= 4 and name.endswith("d") and "." not in name:
+            return "daemon"
         return "binary"
     return "directory"
 
@@ -206,8 +235,8 @@ def read_bundle_metadata(path: Path) -> dict[str, str]:
     }
 
 
-def find_components(root: Path, bundle: dict[str, str]) -> list[dict[str, str]]:
-    components: list[dict[str, str]] = []
+def find_components(root: Path, bundle: dict[str, str]) -> list[dict[str, Any]]:
+    components: list[dict[str, Any]] = []
     seen: set[Path] = set()
 
     main_executable = root / "Contents/MacOS" / bundle.get("executable", "")
@@ -215,9 +244,25 @@ def find_components(root: Path, bundle: dict[str, str]) -> list[dict[str, str]]:
         components.append(component("main-executable", main_executable, root))
         seen.add(main_executable.resolve())
 
-    for xpc_dir in (sorted(root.rglob("*.xpc")) if root.is_dir() else []):
-        if xpc_dir.is_dir():
-            components.append(component("xpc-service", xpc_dir, root))
+    if root.is_dir():
+        nested_bundle_kinds = {
+            ".xpc": "xpc-service",
+            ".systemextension": "system-extension",
+            ".networkextension": "network-extension",
+            ".appex": "appex",
+            ".dext": "driverkit-extension",
+        }
+        for suffix, kind in nested_bundle_kinds.items():
+            for nested in sorted(root.rglob(f"*{suffix}")):
+                if not nested.is_dir() or nested == root:
+                    continue
+                comp = component(kind, nested, root)
+                nested_bundle = read_bundle_metadata(nested)
+                if nested_bundle:
+                    comp["bundle_identifier"] = nested_bundle.get("identifier", "")
+                if kind == "system-extension" and looks_like_endpoint_security_client(nested, nested_bundle):
+                    comp["endpoint_security_client"] = True
+                components.append(comp)
 
     if root.is_dir():
         for item in sorted(root.rglob("*")):
@@ -228,7 +273,7 @@ def find_components(root: Path, bundle: dict[str, str]) -> list[dict[str, str]]:
             resolved = item.resolve()
             if resolved in seen:
                 continue
-            if is_inside_bundle(item, ".xpc"):
+            if is_inside_any_bundle(item, OS_COMPONENT_BUNDLE_SUFFIXES):
                 continue
             rel = item.relative_to(root)
             rel_text = str(rel)
@@ -236,7 +281,11 @@ def find_components(root: Path, bundle: dict[str, str]) -> list[dict[str, str]]:
                 components.append(component("helper-tool", item, root))
                 seen.add(resolved)
             elif ("LaunchDaemons" in rel.parts or "LaunchAgents" in rel.parts) and item.suffix == ".plist":
-                components.append(component("launchd-plist", item, root))
+                comp = component("launchd-plist", item, root)
+                parsed = read_launchd_plist(item)
+                if parsed:
+                    comp["launchd"] = parsed
+                components.append(comp)
                 seen.add(resolved)
             elif ("Contents/MacOS" in rel_text or is_executable(item)) and not should_skip_executable(item):
                 components.append(component("executable", item, root))
@@ -425,6 +474,7 @@ def build_dossier(inventory: dict[str, Any]) -> dict[str, Any]:
         "component_summary": summarize_components(inventory["components"]),
         "components": inventory["components"][:75],
         "electron": inventory["electron"],
+        "os_component": inventory["os_component"],
         "source_correlation": inventory["source_correlation"],
         "decision_support": inventory["decision_support"],
         "scriptorium": {
@@ -463,8 +513,10 @@ def scriptorium_anchor_id(inventory: dict[str, Any]) -> str:
 def classify_surfaces(
     root: Path,
     bundle: dict[str, str],
-    components: list[dict[str, str]],
+    components: list[dict[str, Any]],
     electron: dict[str, Any],
+    kind: str,
+    os_component: dict[str, Any],
 ) -> list[str]:
     surfaces: set[str] = set()
     text = " ".join([root.name, *(component["path"] for component in components)]).lower()
@@ -475,6 +527,8 @@ def classify_surfaces(
         surfaces.add("privileged-helper-tools")
     if any(component["kind"] == "launchd-plist" for component in components):
         surfaces.add("launchd-jobs")
+    if any(component.get("launchd", {}).get("mach_services") for component in components):
+        surfaces.add("launchd-machservices")
     if "updater" in text or "sparkle" in text or "update" in text:
         surfaces.add("updater")
     if bundle.get("privacy_usage_keys"):
@@ -492,6 +546,48 @@ def classify_surfaces(
     if electron["native_modules"]:
         surfaces.add("electron-native-modules")
 
+    if any(component["kind"] == "system-extension" for component in components):
+        surfaces.add("system-extension")
+    if any(component["kind"] == "network-extension" for component in components):
+        surfaces.add("network-extension")
+    if any(component["kind"] == "appex" for component in components):
+        surfaces.add("appex")
+    if any(component["kind"] == "driverkit-extension" for component in components):
+        surfaces.add("driverkit")
+    if any(component.get("endpoint_security_client") for component in components):
+        surfaces.add("endpoint-security-client")
+
+    if os_component["apple_signed"]:
+        surfaces.add("apple-signed")
+    if os_component["private_framework_deps"]:
+        surfaces.add("private-framework-dep")
+    if os_component["dyld_cache_origin"]:
+        surfaces.add("dyld-shared-cache-origin")
+
+    os_component_target_kinds = {
+        "framework",
+        "system-extension",
+        "network-extension",
+        "appex",
+        "driverkit-extension",
+        "xpc-service",
+        "daemon",
+        "agent",
+    }
+    os_component_signal_surfaces = {
+        "system-extension",
+        "network-extension",
+        "appex",
+        "driverkit",
+        "endpoint-security-client",
+        "apple-signed",
+        "private-framework-dep",
+        "dyld-shared-cache-origin",
+        "launchd-machservices",
+    }
+    if kind in os_component_target_kinds or surfaces & os_component_signal_surfaces:
+        surfaces.add("os-component")
+
     return sorted(surfaces)
 
 
@@ -508,6 +604,8 @@ def classify_families(root: Path, surfaces: list[str]) -> list[str]:
         labels.append("developer tools")
     if surface_set & {"privacy-permissions", "keychain"}:
         labels.append("TCC-heavy consumer apps")
+    if "os-component" in surface_set:
+        labels.append("apple-os-components")
 
     return labels or ["unknown/mixed"]
 
@@ -722,6 +820,216 @@ def should_skip_executable(path: Path) -> bool:
 
 def is_inside_bundle(path: Path, suffix: str) -> bool:
     return any(parent.suffix == suffix for parent in path.parents)
+
+
+def is_inside_any_bundle(path: Path, suffixes: tuple[str, ...]) -> bool:
+    return any(parent.suffix in suffixes for parent in path.parents)
+
+
+def looks_like_endpoint_security_client(extension_root: Path, bundle: dict[str, str]) -> bool:
+    name = extension_root.name.lower()
+    identifier = bundle.get("identifier", "").lower()
+    if any(token in name for token in ("endpointsecurity", "endpoint-security", "endpoint_security")):
+        return True
+    if any(token in identifier for token in ("endpointsecurity", "endpoint-security", "endpoint.security")):
+        return True
+    return False
+
+
+def read_launchd_plist(path: Path) -> dict[str, Any]:
+    """Read a launchd plist and extract MachServices, program arguments, watch paths."""
+    if not path.is_file():
+        return {}
+    try:
+        with path.open("rb") as fh:
+            data = plistlib.load(fh)
+    except (OSError, plistlib.InvalidFileException):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    program_arguments = data.get("ProgramArguments")
+    mach_services = data.get("MachServices")
+    watch_paths = data.get("WatchPaths")
+    return {
+        "label": str(data.get("Label", "")),
+        "program_arguments": [str(arg) for arg in program_arguments][:20] if isinstance(program_arguments, list) else [],
+        "mach_services": sorted(str(key) for key in mach_services)[:30] if isinstance(mach_services, dict) else [],
+        "user_name": str(data.get("UserName", "")),
+        "run_at_load": bool(data.get("RunAtLoad", False)),
+        "watch_paths": [str(p) for p in watch_paths][:10] if isinstance(watch_paths, list) else [],
+    }
+
+
+def run_codesign(local_path: Path) -> str:
+    """Run `codesign -dv` and return combined output. Empty string when codesign is unavailable."""
+    target = codesign_target(local_path)
+    if target is None:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["codesign", "-dv", "--", str(target)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return ""
+    return (proc.stderr or "") + (proc.stdout or "")
+
+
+def codesign_target(local_path: Path) -> Path | None:
+    if local_path.is_file():
+        return local_path
+    if local_path.is_dir():
+        return local_path
+    return None
+
+
+def run_otool_dependencies(local_path: Path) -> str:
+    """Run `otool -L` against the most likely main binary. Empty string on failure."""
+    binary = otool_binary(local_path)
+    if binary is None:
+        return ""
+    try:
+        proc = subprocess.run(
+            ["otool", "-L", "--", str(binary)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        return ""
+    return (proc.stdout or "") + (proc.stderr or "")
+
+
+def otool_binary(local_path: Path) -> Path | None:
+    if local_path.is_file():
+        return local_path
+    if local_path.is_dir() and local_path.suffix == ".framework":
+        stem = local_path.stem
+        candidates = [local_path / stem]
+        candidates.extend(local_path.glob(f"Versions/*/{stem}"))
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+        return None
+    if local_path.is_dir():
+        bundle = read_bundle_metadata(local_path)
+        executable = bundle.get("executable", "")
+        if executable:
+            candidate = local_path / "Contents/MacOS" / executable
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def detect_apple_signing(local_path: Path, bundle: dict[str, str]) -> dict[str, Any]:
+    """Best-effort detection of Apple signing.
+
+    Combines `codesign -dv` output with bundle identifier heuristics. Returns a dict with
+    `apple_signed`, `authority`, `team_id`, `evidence`. False positives are minimized by
+    requiring an explicit Apple authority string from codesign or a `com.apple.` identifier.
+    """
+    identifier = bundle.get("identifier", "")
+    info: dict[str, Any] = {
+        "apple_signed": False,
+        "authority": "",
+        "team_id": "",
+        "evidence": "",
+    }
+    if identifier.startswith("com.apple."):
+        info.update(
+            apple_signed=True,
+            authority="bundle-identifier-heuristic",
+            evidence=f"CFBundleIdentifier={identifier}",
+        )
+    out = run_codesign(local_path)
+    return apply_codesign_evidence(info, out)
+
+
+def apply_codesign_evidence(info: dict[str, Any], codesign_output: str) -> dict[str, Any]:
+    if not codesign_output:
+        return info
+    authority = ""
+    authority_match = re.search(r"^Authority=(.+)$", codesign_output, re.MULTILINE)
+    if authority_match:
+        authority = authority_match.group(1).strip()
+    team_match = re.search(r"^TeamIdentifier=(\S+)$", codesign_output, re.MULTILINE)
+    if team_match:
+        info["team_id"] = team_match.group(1).strip()
+    if authority and ("Software Signing" in authority or "Apple Code Signing Certification Authority" in authority):
+        info["apple_signed"] = True
+        info["authority"] = authority
+        info["evidence"] = f"codesign Authority={authority}"
+    elif authority and not info["apple_signed"]:
+        info["authority"] = authority
+        info["evidence"] = f"codesign Authority={authority}"
+    return info
+
+
+def detect_dyld_dependencies(local_path: Path) -> dict[str, Any]:
+    """Detect framework dependencies and dyld shared cache origin via `otool -L`."""
+    out = run_otool_dependencies(local_path)
+    return parse_dyld_dependencies(out)
+
+
+def parse_dyld_dependencies(otool_output: str) -> dict[str, Any]:
+    """Parse `otool -L` style output. Pure function for testability."""
+    result: dict[str, Any] = {
+        "all_deps": [],
+        "private_framework_deps": [],
+        "dyld_cache_origin": False,
+        "dyld_cache_paths": [],
+    }
+    if not otool_output:
+        return result
+    for raw_line in otool_output.splitlines():
+        line = raw_line.strip()
+        if not line or line.endswith(":"):
+            continue
+        match = re.match(r"^(\S[\S]*\.(?:dylib|framework/[^\s]+))", line)
+        if not match:
+            continue
+        path = match.group(1)
+        result["all_deps"].append(path)
+        if "/PrivateFrameworks/" in path:
+            result["private_framework_deps"].append(path)
+        if path.startswith("/System/") and not Path(path).exists():
+            result["dyld_cache_paths"].append(path)
+    if result["dyld_cache_paths"]:
+        result["dyld_cache_origin"] = True
+    result["all_deps"] = result["all_deps"][:200]
+    result["private_framework_deps"] = result["private_framework_deps"][:50]
+    result["dyld_cache_paths"] = result["dyld_cache_paths"][:30]
+    return result
+
+
+def build_os_component_facts(
+    local_path: Path,
+    bundle: dict[str, str],
+    kind: str,
+    components: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Aggregate OS-component facts: signing, dyld dependencies, OS build, MachServices."""
+    signing = detect_apple_signing(local_path, bundle)
+    dyld = detect_dyld_dependencies(local_path)
+    mach_services: list[str] = []
+    for comp in components:
+        for service in comp.get("launchd", {}).get("mach_services", []):
+            if service not in mach_services:
+                mach_services.append(service)
+    return {
+        "kind": kind,
+        "apple_signed": signing["apple_signed"],
+        "authority": signing["authority"],
+        "team_id": signing["team_id"],
+        "signing_evidence": signing["evidence"],
+        "all_dyld_deps": dyld["all_deps"],
+        "private_framework_deps": dyld["private_framework_deps"],
+        "dyld_cache_origin": dyld["dyld_cache_origin"],
+        "dyld_cache_paths": dyld["dyld_cache_paths"],
+        "mach_services": mach_services[:50],
+    }
 
 
 def is_within_root(path: Path, root_resolved: Path) -> bool:
