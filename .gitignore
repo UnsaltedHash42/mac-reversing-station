@@ -50,6 +50,11 @@ target-queue.md
 target-backlog.md
 target-backlog/
 
+# Operator handoff + Claude Code workstation notes (private to the operator)
+HANDOFF.md
+CLAUDE_CODE.md
+CHEATSHEET.md
+
 # PoC scaffolding outputs - keep target-specific PoC code, harnesses, and chain
 # artifacts in private project clones, not the reusable template repo.
 pocs/
