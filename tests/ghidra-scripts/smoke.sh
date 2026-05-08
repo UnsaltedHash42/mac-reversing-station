@@ -24,6 +24,10 @@ expected_headers = {
     "scan_tcc_prompt_surface.py": "target\ttcc_refs\tprompt_refs\tbundle_identity_refs\tapple_event_refs\tprivacy_services\tconfidence\tevidence",
     "scan_persistent_authorization.py": "target\tbookmark_refs\tkeychain_refs\tcontainer_store_refs\tsandbox_refs\tfile_access_refs\tconfidence\tevidence",
     "export_lldb_anchors.py": "target\tfunctions\tentry_points\tevidence",
+    "scan_launchd_machservice_topology.py": "target\tlisteners\tmach_services\tentitlement_refs\taudit_token_uses\tevidence",
+    "scan_system_extension_surface.py": "target\tsystem_extension\tes_subsystems\tentitlement_refs\tapproval_strings\tevidence",
+    "scan_endpoint_security_client.py": "target\tes_client_calls\tes_event_subscriptions\tcache_handlers\tpolicy_strings\tevidence",
+    "scan_private_framework_dependency.py": "target\tframework_deps\tprivate_framework_refs\tdyld_cache_origin\tweak_links\tevidence",
 }
 
 errors: list[str] = []

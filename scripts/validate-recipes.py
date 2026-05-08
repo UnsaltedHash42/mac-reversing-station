@@ -18,6 +18,16 @@ REQUIRED_RECIPE_IDS = {
     "correlate-source-to-binary",
     "gatehouse-ghidra-lldb-confirmation",
     "inventory-first-manual-routing",
+    "os-component-inventory",
+    "inspect-launchd-machservice-topology",
+    "inspect-system-or-network-extension",
+    "inspect-endpoint-security-client",
+    "private-framework-dependency-map",
+    "apple-signed-build-drift-check",
+    "vm-snapshot-and-action-log",
+    "chain-discovery",
+    "poc-authoring",
+    "apple-source-correlation",
 }
 
 

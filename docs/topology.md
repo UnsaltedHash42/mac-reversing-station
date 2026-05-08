@@ -122,8 +122,8 @@ Hopper or another GUI decompiler may remain installed on the lab host for manual
 | Path | Purpose |
 |------|---------|
 | `scripts/install-ghidra-host.sh` | Install/check/smoke Ghidra + headless MCP on the primary lab host |
-| `ghidra-scripts/` | Read-only hunt scripts synced to the lab host |
-| `macre-vm-mcp/` | VM-side dynamic tooling MCP server |
+| `ghidra-scripts/` | Read-only hunt scripts synced to the lab host, including OS-component scanners for MachServices, extensions, Endpoint Security, and PrivateFramework dependencies |
+| `macre-vm-mcp/` | VM-side dynamic tooling MCP server, including OS-component metadata tools for launchd, system extensions, framework dependencies, and OS build snapshots |
 | `templates/findings-repo/` | Private research repo starter with lab safety, corpus, Scriptorium, metrics, reporting, and handoff templates |
 | `docs/ontology/` | Shared macOS vulnerability-class ontology |
 | `docs/playbooks/` | Third-party app family playbooks and Maproom recipe registry |

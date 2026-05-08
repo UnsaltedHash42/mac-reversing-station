@@ -76,3 +76,93 @@ Recipe ID: `inventory-first-manual-routing`
 - **Run:** `Skills/offensive-macos-vuln-ontology`, `docs/playbooks/third-party-app-families.md`.
 - **Expected outputs:** Observed surfaces, likely ontology classes, false-positive traps, and one concrete next artifact.
 - **State updates:** `CORPUS.md` family routing and worklist rows.
+
+## os-component-inventory
+
+Recipe ID: `os-component-inventory`
+
+- **Use when:** Intake records `apple-os-components` or the `os-component` surface.
+- **Run:** `Skills/offensive-macos-family-os-components`, `docs/playbooks/os-components.md`, `scripts/start-target.py`.
+- **Expected outputs:** OS-component topology row, Watch maturity summary, OS build/SIP notes, and first subsystem route.
+- **State updates:** `CORPUS.md` OS Component Topology, Watch Decision Support, Scriptorium anchor.
+
+## inspect-launchd-machservice-topology
+
+Recipe ID: `inspect-launchd-machservice-topology`
+
+- **Use when:** Intake finds launchd plists, MachServices, daemon names, XPC listener strings, or service registration code.
+- **Run:** `Skills/offensive-macos-family-os-components`, `macre-vm-mcp/src/macre_vm_mcp/tools_system.py`, `ghidra-scripts/scan_launchd_machservice_topology.py`.
+- **Expected outputs:** Launchd domain snapshot, MachService-to-program map, listener/delegate static anchors, and reachability notes.
+- **State updates:** `CORPUS.md` OS Component Topology, `INDEX.md` candidates, Scriptorium evidence path, `VM_ACTIONS.md` for VM-side dynamic actions.
+
+## inspect-system-or-network-extension
+
+Recipe ID: `inspect-system-or-network-extension`
+
+- **Use when:** Intake finds `.systemextension`, `.networkextension`, `.appex`, DriverKit, or extension approval strings.
+- **Run:** `Skills/offensive-macos-family-os-components`, `macre-vm-mcp/src/macre_vm_mcp/tools_system.py`, `ghidra-scripts/scan_system_extension_surface.py`.
+- **Expected outputs:** Extension inventory, approval/entitlement strings, parent app relationship, and maturity caveat (`basic-inventory` until a full recipe lands).
+- **State updates:** `CORPUS.md` OS Component Topology, Watch Decision Support coverage gaps, Scriptorium evidence path.
+
+## inspect-endpoint-security-client
+
+Recipe ID: `inspect-endpoint-security-client`
+
+- **Use when:** Intake or strings identify Endpoint Security clients, `es_new_client`, event subscriptions, or cache/policy handlers.
+- **Run:** `Skills/offensive-macos-family-os-components`, `macre-vm-mcp/src/macre_vm_mcp/tools_system.py`, `ghidra-scripts/scan_endpoint_security_client.py`.
+- **Expected outputs:** ES client calls, event subscription hints, policy/cache strings, entitlement references, and operator-led reachability questions.
+- **State updates:** `CORPUS.md` OS Component Topology, `INDEX.md` candidates only after reachability evidence, Scriptorium evidence path.
+
+## private-framework-dependency-map
+
+Recipe ID: `private-framework-dependency-map`
+
+- **Use when:** Intake detects `/System/Library/PrivateFrameworks/` dependencies or dyld shared-cache origin.
+- **Run:** `Skills/offensive-macos-family-os-components`, `macre-vm-mcp/src/macre_vm_mcp/tools_system.py`, `ghidra-scripts/scan_private_framework_dependency.py`.
+- **Expected outputs:** Dependency map, PrivateFramework references, weak-link hints, dyld-cache origin note, and target/source correlation candidates.
+- **State updates:** `CORPUS.md` OS Component Topology, Source-Binary Correlation, Scriptorium evidence path.
+
+## apple-signed-build-drift-check
+
+Recipe ID: `apple-signed-build-drift-check`
+
+- **Use when:** Comparing workstation, lab VM, and target artifact behavior for Apple-signed components.
+- **Run:** `Skills/offensive-macos-family-os-components`, `macre-vm-mcp/src/macre_vm_mcp/tools_system.py`.
+- **Expected outputs:** `sw_vers`, SIP state, architecture/build notes, and a decision about whether version drift blocks the claim.
+- **State updates:** `CORPUS.md` OS Component Topology, `LAB_SAFETY.md` machine roles if the lab build changes, Scriptorium evidence path.
+
+## vm-snapshot-and-action-log
+
+Recipe ID: `vm-snapshot-and-action-log`
+
+- **Use when:** A dynamic action may crash, corrupt state, reset TCC/keychain data, restart services, or otherwise change the lab VM.
+- **Run:** `Skills/offensive-macos-agent-discipline`, `templates/findings-repo/LAB_SAFETY.md`, `templates/findings-repo/VM_ACTIONS.md`.
+- **Expected outputs:** Snapshot decision, action row, outcome row, and evidence pointer for the dynamic run.
+- **State updates:** `VM_ACTIONS.md`, `CHRONICLE.md` for noteworthy state changes, Scriptorium anchor when evidence supports a claim.
+
+## chain-discovery
+
+Recipe ID: `chain-discovery`
+
+- **Use when:** Candidate primitives may combine into a higher-impact chain or need an exploitability rating before PoC investment.
+- **Run:** `Skills/offensive-macos-chain-discovery`, `docs/ontology/macos-vulnerability-classes.md`.
+- **Expected outputs:** Exploitability rating, chain hypothesis, reachability/reliability notes, and the next experiment.
+- **State updates:** `CORPUS.md` Exploitability And Chainability, `INDEX.md` for promoted chains, Scriptorium evidence path.
+
+## poc-authoring
+
+Recipe ID: `poc-authoring`
+
+- **Use when:** A confirmed candidate or non-theoretical chain is ready for a reproducible PoC harness.
+- **Run:** `Skills/offensive-macos-poc-authoring`, `templates/findings-repo/POC_SCAFFOLDING.md`, `templates/findings-repo/templates/poc/README.md.template`.
+- **Expected outputs:** `pocs/<target-id>/<POC-ID>/` scaffold, PoC README, run records, reliability notes, and evidence links.
+- **State updates:** `CORPUS.md` PoC Tracking, Scriptorium anchor, `CHRONICLE.md`, `VM_ACTIONS.md`.
+
+## apple-source-correlation
+
+Recipe ID: `apple-source-correlation`
+
+- **Use when:** Apple-published source can clarify an OS component, but the shipped binary remains authoritative.
+- **Run:** `scripts/fetch-apple-source.py`, `Skills/offensive-macos-source-binary-correlation`, `scripts/start-target.py`.
+- **Expected outputs:** Gitignored Apple source cache path, source ref/URL metadata, binary-correlation questions, and confidence state.
+- **State updates:** `CORPUS.md` Apple Source Map, Source-Binary Correlation, Watch Decision Support coverage gaps.

@@ -46,6 +46,22 @@ The scripts intentionally bias toward stable triage signals over proof. A positi
   - TSV: `target	functions	entry_points	evidence`
   - Exports capped function entry anchors for Gatehouse workflows that need LLDB confirmation.
 
+- `scan_launchd_machservice_topology.py`
+  - TSV: `target	listeners	mach_services	entitlement_refs	audit_token_uses	evidence`
+  - Looks for launchd/MachService listener strings, entitlement checks, and audit-token usage.
+
+- `scan_system_extension_surface.py`
+  - TSV: `target	system_extension	es_subsystems	entitlement_refs	approval_strings	evidence`
+  - Looks for system/network extension, Endpoint Security, entitlement, and approval-state vocabulary.
+
+- `scan_endpoint_security_client.py`
+  - TSV: `target	es_client_calls	es_event_subscriptions	cache_handlers	policy_strings	evidence`
+  - Looks for Endpoint Security client setup, event subscriptions, cache handlers, and policy strings.
+
+- `scan_private_framework_dependency.py`
+  - TSV: `target	framework_deps	private_framework_refs	dyld_cache_origin	weak_links	evidence`
+  - Looks for PrivateFramework references, dyld shared-cache hints, weak links, and dynamic lookup patterns.
+
 ## Invocation Pattern
 
 From an MCP-capable agent:

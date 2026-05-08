@@ -22,6 +22,10 @@ EXPECTED_TOOLS = {
     "log_stream",
     "launchctl_list",
     "launchctl_print",
+    "launchd_machservices",
+    "system_extension_list",
+    "framework_dependency_map",
+    "os_build_snapshot",
 }
 
 

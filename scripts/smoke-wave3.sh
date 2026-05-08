@@ -80,8 +80,17 @@ required = [
     "docs/playbooks/enterprise-security-agents.md",
     "docs/playbooks/developer-tools.md",
     "docs/playbooks/tcc-heavy-consumer-apps.md",
+    "docs/playbooks/os-components.md",
     "docs/playbooks/adding-target-families.md",
     "docs/playbooks/investigation-recipes.md",
+    "docs/research/macos-cve-survey-2026.md",
+    "templates/findings-repo/VM_ACTIONS.md",
+    "templates/findings-repo/POC_SCAFFOLDING.md",
+    "templates/findings-repo/templates/poc/README.md.template",
+    "ghidra-scripts/scan_launchd_machservice_topology.py",
+    "ghidra-scripts/scan_system_extension_surface.py",
+    "ghidra-scripts/scan_endpoint_security_client.py",
+    "ghidra-scripts/scan_private_framework_dependency.py",
 ]
 missing = [path for path in required if not Path(path).is_file()]
 if missing:

@@ -18,6 +18,10 @@ Wraps VM-resident tooling as MCP tools:
 | `tools_system` | `log_stream` | `log stream --predicate` with timeout |
 | `tools_system` | `launchctl_list` | `launchctl list` |
 | `tools_system` | `launchctl_print` | `launchctl print <service-target>` |
+| `tools_system` | `launchd_machservices` | parsed `launchctl print <domain>` MachService facts plus raw text |
+| `tools_system` | `system_extension_list` | parsed `systemextensionsctl list` output |
+| `tools_system` | `framework_dependency_map` | bounded `otool -L` dependency map with PrivateFramework/shared-cache hints |
+| `tools_system` | `os_build_snapshot` | `sw_vers`, SIP state, and software snapshot for evidence pinning |
 
 ## VM install
 

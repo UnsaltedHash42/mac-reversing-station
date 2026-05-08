@@ -18,11 +18,13 @@ Your lab host can be named anything. In this repo, examples use `<lab-host>` and
 
 - `Skills/` contains Cursor skills for macOS RE, Ghidra tooling, target-family playbooks, reporting, and lab discipline.
 - `docs/ontology/` defines macOS vulnerability classes and the evidence expected for each class.
-- `docs/playbooks/` gives starting workflows for privileged helpers/updaters, enterprise agents, developer tools, and TCC-heavy apps.
+- `docs/playbooks/` gives starting workflows for privileged helpers/updaters, enterprise agents, developer tools, TCC-heavy apps, and Apple OS components.
 - `ghidra-scripts/` contains read-only Ghidra postScripts that produce TSV triage output.
 - `macre-vm-mcp/` contains VM-side dynamic tooling for LLDB, DTrace, codesign, launchd, logs, and system checks.
 - `templates/findings-repo/` contains local project files such as `LAB_SAFETY.md`, `CORPUS.md`, `SCRIPTORIUM.md`, `CHRONICLE.md`, `INDEX.md`, `METRICS.md`, and `REPORTING.md`.
 - `scripts/` contains setup, sync, and smoke-test helpers.
+
+The OS-component lane is now first-class: intake recognizes Apple-signed binaries, daemons, frameworks/PrivateFrameworks, launchd/MachService surfaces, system/network extensions, Endpoint Security clients, and DriverKit-adjacent components, then Watch records the maturity tier and routes Maproom recipes. Chain discovery and PoC authoring scaffolds are available for private project clones; actual PoC code stays gitignored.
 
 Future direction: the station is intended to grow into iOS reversing support after the macOS workflow is strong.
 
