@@ -20,6 +20,7 @@ for path in \
     "SUBMISSION_TRIAGE.md" \
     "SCRIPTORIUM.md" \
     "CHRONICLE.md" \
+    "VM_ACTIONS.md" \
     "HANDOFF.md.template" \
     "machines.md.template" \
     ".cursor/rules/rule-analysis.mdc" \
@@ -47,9 +48,13 @@ grep -q "PoC Tracking" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include PoC T
 grep -q "Scriptorium Anchors" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Scriptorium Anchors"
 grep -q "Current Hypotheses And Worklist" "${ROOT}/CORPUS.md" || fail "CORPUS.md must include Current Hypotheses And Worklist"
 grep -q "Destructive-Test Checklist" "${ROOT}/LAB_SAFETY.md" || fail "LAB_SAFETY.md must include Destructive-Test Checklist"
+grep -q "Lab Disposability" "${ROOT}/LAB_SAFETY.md" || fail "LAB_SAFETY.md must include Lab Disposability section"
+grep -q "lab_disposable" "${ROOT}/LAB_SAFETY.md" || fail "LAB_SAFETY.md must include lab_disposable field"
 grep -q "Report Modes" "${ROOT}/REPORTING.md" || fail "REPORTING.md must include Report Modes"
 grep -q "Anchor ID" "${ROOT}/SCRIPTORIUM.md" || fail "SCRIPTORIUM.md must include Anchor ID"
 grep -q "Time UTC" "${ROOT}/CHRONICLE.md" || fail "CHRONICLE.md must include Time UTC"
+grep -q "Action Taxonomy" "${ROOT}/VM_ACTIONS.md" || fail "VM_ACTIONS.md must include Action Taxonomy"
+grep -q "Snapshot Before" "${ROOT}/VM_ACTIONS.md" || fail "VM_ACTIONS.md must include Snapshot Before column"
 
 if [[ ! -d "${ROOT}/.git" ]]; then
     echo "WARN: git is not initialized yet. Run: git init"
