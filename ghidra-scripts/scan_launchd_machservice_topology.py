@@ -1,92 +1,83 @@
-# Ghidra script: scan one loaded program for launchd/MachService topology signals.
-# Output TSV:
-# target	listeners	mach_services	entitlement_refs	audit_token_uses	evidence
+# Ghidra script: scan one loaded program for launchd / MachService topology.
+#
+# Tier A (callsite-verified):
+#   bootstrap_callsite          callers of bootstrap_check_in /
+#                               bootstrap_register / xpc_connection_create_mach_service
+#
+# Tier B (function-name match):
+#   listener_setup_impl         functions named *resume / *registerForXPC /
+#                               *initWithMachServiceName / *startListening
+#
+# Tier C (string heuristic):
+#   mach_service_string         reverse-DNS strings co-occurring with com.apple
+#                               or xpc/mach vocabulary (likely service names)
+#   listener_api_string         NSXPCListener / xpc_connection_create_mach_service /
+#                               bootstrap_*
+#   entitlement_string          com.apple.security / entitlement /
+#                               SecTaskCopyValueForEntitlement
+#
+# @category Mach-O.Launchd
+# @runtime Jython
 
 import re
 
-
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
+from _re_lib import (
+    StringRule, format_addr, callers_of, find_external, run_string_scan,
+)
 
 
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        try:
-            return currentProgram.getName()
-        except Exception:
-            return "stub"
+BOOTSTRAP_APIS = (
+    "bootstrap_check_in",
+    "bootstrap_register",
+    "xpc_connection_create_mach_service",
+    "xpc_connection_create_listener",
+)
 
 
-def iter_strings(limit=8000):
-    try:
-        listing = currentProgram.getListing()
-    except Exception:
-        return
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
+def add_bootstrap_callsites(writer):
+    for api in BOOTSTRAP_APIS:
+        fn = find_external(api)
+        if fn is None:
             continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
-            continue
-        seen += 1
-        yield text
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "bootstrap_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
 
 
-def iter_function_names():
-    try:
-        functions = currentProgram.getFunctionManager().getFunctions(True)
-    except Exception:
-        return
-    for function in functions:
-        try:
-            yield function.getName()
-        except Exception:
-            continue
+_REV_DNS = re.compile(r"^([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_.-]+$")
 
 
-service_re = re.compile(r"([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_.-]+")
-listener_re = re.compile(r"(NSXPCListener|xpc_connection_create_mach_service|launchctl|MachServices|bootstrap_)", re.I)
-entitlement_re = re.compile(r"(com\.apple\.security|entitlement|SecTaskCopyValueForEntitlement)", re.I)
-audit_re = re.compile(r"(audit[_-]?token|xpc_connection_get_audit_token|SecTask)", re.I)
+def _looks_like_service_name(text):
+    if not _REV_DNS.match(text):
+        return False
+    if "/" in text or " " in text:
+        return False
+    if len(text) > 96:
+        return False
+    return ("com.apple" in text or "mach" in text.lower() or "xpc" in text.lower()
+            or text.count(".") <= 5)
 
-strings = list(iter_strings())
-functions = list(iter_function_names())
-combined = strings + functions
 
-mach_services = sorted({s for s in strings if service_re.search(s) and ("com.apple" in s or "mach" in s.lower() or "xpc" in s.lower())})
-listeners = sorted({item for item in combined if listener_re.search(item)})
-entitlements = sorted({item for item in combined if entitlement_re.search(item)})
-audit_uses = sorted({item for item in combined if audit_re.search(item)})
-
-evidence = []
-for label, values in (
-    ("services", mach_services[:6]),
-    ("listeners", listeners[:5]),
-    ("entitlements", entitlements[:5]),
-    ("audit", audit_uses[:5]),
-):
-    if values:
-        evidence.append("%s=%s" % (label, "|".join(values).replace("\t", " ")))
-
-emit("target\tlisteners\tmach_services\tentitlement_refs\taudit_token_uses\tevidence")
-emit(
-    "%s\t%d\t%d\t%d\t%d\t%s"
-    % (
-        program_name(),
-        len(listeners),
-        len(mach_services),
-        len(entitlements),
-        len(audit_uses),
-        "; ".join(evidence),
-    )
+run_string_scan(
+    scan_name="scan_launchd_machservice_topology",
+    rules=[
+        StringRule("C", "mach_service_string", r".",
+                   max_anchors=24, evidence_label="service",
+                   accept=_looks_like_service_name),
+        StringRule("C", "listener_api_string",
+                   r"(NSXPCListener|xpc_connection_create_mach_service|launchctl|MachServices|bootstrap_)",
+                   max_anchors=16, evidence_label="api"),
+        StringRule("C", "entitlement_string",
+                   r"(com\.apple\.security|entitlement|SecTaskCopyValueForEntitlement)",
+                   max_anchors=16, evidence_label="string"),
+    ],
+    function_rules=[
+        StringRule("B", "listener_setup_impl",
+                   r"(NSXPCListener|initWithMachServiceName|registerForXPC|startListening|setupListener|listener.{0,20}resume)",
+                   max_anchors=12, evidence_label="function"),
+    ],
+    enrich=add_bootstrap_callsites,
 )

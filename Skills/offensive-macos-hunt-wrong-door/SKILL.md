@@ -72,18 +72,22 @@ Known pattern sources included daemons with multi-listener splits, post-connecti
    ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_wrong_door.py", script_args=[])
    ```
 
-3. Save TSV stdout:
+3. Save TSV stdout. The unified tiered-anchor contract (see `ghidra-scripts/README.md`) emits:
 
    ```text
-   daemon	listeners	ent_refs	should_accept_impls	audit_token_uses	evidence
-   /path/to/daemon	3	1	1	0	listeners=...
+   target  tier  anchor_kind         name                                   address      evidence
+   /path/to/daemon  B  should_accept_impl  -[Delegate listener:shouldAccept...]  0x100008abc  selector=...
+   /path/to/daemon  B  audit_token_user    _validate_audit_token              0x10000a000  function=...
+   /path/to/daemon  C  listener_string     com.apple.someservice              -            listener_string=com.apple.someservice
    ```
 
-4. Rank rows:
+4. Rank rows. The wrong-door pattern shows up as a tier-imbalance:
 
-   - Tier 1: `listeners >= 2`, privileged/internal service names, `ent_refs == 0` or fewer entitlement refs than listener surfaces, UID 501 `ACCEPTED` or `REPLIED`.
-   - Tier 2: entitlement strings exist but appear post-connection; delegate logic unclear.
-   - Tier 3: generic listener evidence but no privileged naming or dynamic reachability.
+   - **Strong**: tier-C `listener_string` rows for multiple privileged-named MachServices (`*Privileged*`, `*Internal*`, `*Driver*`, `*Registry*`) with **no** matching tier-B `should_accept_impl`. The delegate either does not exist or shares one permissive impl across listeners.
+   - **Medium**: tier-B `should_accept_impl` exists but tier-B `audit_token_user` rows are absent — gate likely accepts then rejects per-method, coverage often inconsistent.
+   - **Weak**: tier-B and tier-C rows balance — delegate present, audit-token consumed; close unless dynamic reachability proves a per-method gap.
+
+   For decompiler-recovered service-name evidence (tier A `xpc_registration_callsite` rows), pair this scan with `dump_xpc_listeners.py`. A daemon that only shows tier-C `listener_string` rows but no tier-A `xpc_registration_callsite` rows often has its listener registered through a framework dependency; chase the import.
 
 ## UID 501 XPC Reachability Probe
 

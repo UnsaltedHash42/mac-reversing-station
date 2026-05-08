@@ -1,83 +1,67 @@
-# Ghidra script: identify likely Mach-O code-signing flag references and zero-flag checks.
-# Output TSV:
-# target	code_sign_refs	flags_zero_refs	amfi_refs	confidence	evidence
+# Ghidra script: identify code-signing-flag and AMFI references that may
+# correspond to "flags == 0" gating decisions.
+#
+# Tier A (callsite-verified):
+#   csops_callsite              callers of csops / csops_audittoken
+#
+# Tier B (function-name match):
+#   code_sign_check_impl        functions named *codesign* / *SecCode* /
+#                               *CodeDirectory*
+#   flag_check_impl             functions named *flag* / *CS_VALID* /
+#                               *CS_PLATFORM_BINARY*
+#
+# Tier C (string heuristic):
+#   code_sign_string            codesign / SecCode / CodeDirectory / csops / CS_OPS
+#   flags_string                flag / CS_VALID / CS_RUNTIME / CS_PLATFORM_BINARY
+#   amfi_string                 AMFI / AppleMobileFileIntegrity / MISValidate
+#
+# @category Mach-O.CodeSigning
+# @runtime Jython
 
-import re
+from _re_lib import (
+    StringRule, format_addr, callers_of, find_external, run_string_scan,
+)
 
 
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
+CSOPS_APIS = (
+    "csops",
+    "csops_audittoken",
+)
 
 
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        return currentProgram.getName()
-
-
-def iter_strings(limit=7000):
-    listing = currentProgram.getListing()
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
+def add_csops_callsites(writer):
+    for api in CSOPS_APIS:
+        fn = find_external(api)
+        if fn is None:
             continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
-            continue
-        seen += 1
-        yield text
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "csops_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
 
 
-def iter_function_names():
-    fm = currentProgram.getFunctionManager()
-    for function in fm.getFunctions(True):
-        try:
-            yield function.getName()
-        except Exception:
-            continue
-
-
-code_sign_re = re.compile(r"(codesign|code.?sign|SecCode|SecStaticCode|CodeDirectory|csops|CS_OPS)", re.I)
-zero_re = re.compile(r"(flags?\s*[=:]\s*0x?0|CS_VALID|CS_RUNTIME|CS_PLATFORM_BINARY|flag)", re.I)
-amfi_re = re.compile(r"(amfi|AppleMobileFileIntegrity|MISValidate|MobileFileIntegrity)", re.I)
-
-items = list(iter_strings()) + list(iter_function_names())
-code_sign = sorted({item for item in items if code_sign_re.search(item)})
-flags_zero = sorted({item for item in items if zero_re.search(item)})
-amfi = sorted({item for item in items if amfi_re.search(item)})
-
-score = 0
-score += 2 if code_sign else 0
-score += 2 if flags_zero else 0
-score += 1 if amfi else 0
-confidence = "high" if score >= 4 else ("medium" if score >= 2 else ("low" if score else "none"))
-
-evidence = []
-for label, values in (
-    ("code_sign", code_sign[:5]),
-    ("flags_zero", flags_zero[:5]),
-    ("amfi", amfi[:5]),
-):
-    if values:
-        evidence.append("%s=%s" % (label, "|".join(values).replace("\t", " ")))
-
-emit("target\tcode_sign_refs\tflags_zero_refs\tamfi_refs\tconfidence\tevidence")
-emit(
-    "%s\t%d\t%d\t%d\t%s\t%s"
-    % (
-        program_name(),
-        len(code_sign),
-        len(flags_zero),
-        len(amfi),
-        confidence,
-        "; ".join(evidence),
-    )
+run_string_scan(
+    scan_name="scan_flags_zero",
+    rules=[
+        StringRule("C", "code_sign_string",
+                   r"(codesign|code.?sign|SecCode|SecStaticCode|CodeDirectory|csops|CS_OPS)",
+                   max_anchors=20, evidence_label="string"),
+        StringRule("C", "flags_string",
+                   r"(CS_VALID|CS_RUNTIME|CS_PLATFORM_BINARY|CS_HARD|CS_KILL|flags?\s*[=:]\s*0x?0)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "amfi_string",
+                   r"(amfi|AppleMobileFileIntegrity|MISValidate|MobileFileIntegrity)",
+                   max_anchors=12, evidence_label="string"),
+    ],
+    function_rules=[
+        StringRule("B", "code_sign_check_impl",
+                   r"(codesign|SecCode|CodeDirectory|signingIdentity|signedRequirement)",
+                   max_anchors=12, evidence_label="function"),
+        StringRule("B", "flag_check_impl",
+                   r"(CS_VALID|CS_PLATFORM_BINARY|cs_flags|csflags)",
+                   max_anchors=12, evidence_label="function"),
+    ],
+    enrich=add_csops_callsites,
 )

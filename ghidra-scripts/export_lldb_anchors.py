@@ -462,32 +462,38 @@ def main():
     anchors.sort(key=lambda a: (-a.score, -a.in_degree, a.name))
     anchors = anchors[:MAX_ANCHORS]
 
-    target = safe_target_field()
     sidecar_path = write_sidecar(anchors, program_path())
 
-    # TSV header.
-    emit("\t".join([
-        "target", "rank", "score", "in_degree", "name", "address",
-        "namespace", "sources",
-    ]))
-    for i, anchor in enumerate(anchors, start=1):
-        emit("\t".join([
-            target,
-            str(i),
-            str(anchor.score),
-            str(anchor.in_degree),
-            (anchor.name or "").replace("\t", " "),
-            str(anchor.address),
-            (anchor.namespace or "").replace("\t", " "),
-            anchor.evidence_str().replace("\t", " "),
-        ]))
+    # Emit in the standard tiered anchor contract (see _re_lib.py).
+    from _re_lib import AnchorWriter, format_addr
 
-    # Summary line on stderr so it doesn't pollute the TSV.
-    warn(
-        "anchors=%d (export=%d entrypoint=%d api=%d objc=%d fanin=%d) sidecar=%s"
-        % (len(anchors), n_export, n_entry, n_api, n_objc, n_fanin,
-           sidecar_path or "<none>")
-    )
+    writer = AnchorWriter("export_lldb_anchors")
+
+    for i, anchor in enumerate(anchors, start=1):
+        labels = [s[0] for s in anchor.sources]
+        if any(l in ("export", "entrypoint", "mod_init") for l in labels):
+            tier = "A"
+            kind = "lldb_anchor_symbol"
+        elif any(l == "objc_method" or l.startswith("api/") for l in labels):
+            tier = "B"
+            kind = "lldb_anchor_metadata"
+        else:
+            tier = "C"
+            kind = "lldb_anchor_fanin"
+
+        evid = "rank=%d; score=%d; in_degree=%d; namespace=%s; sources=%s" % (
+            i, anchor.score, anchor.in_degree,
+            (anchor.namespace or "").replace("\t", " "),
+            anchor.evidence_str(),
+        )
+        writer.add(tier, kind, anchor.name or "<unnamed>",
+                   format_addr(anchor.address), evid)
+
+    if sidecar_path:
+        writer.warn("sidecar=%s" % sidecar_path)
+    writer.warn("export=%d entrypoint=%d api=%d objc=%d fanin=%d" %
+                (n_export, n_entry, n_api, n_objc, n_fanin))
+    writer.flush()
 
 
 main()

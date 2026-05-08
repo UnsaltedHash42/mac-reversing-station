@@ -2,15 +2,39 @@
 
 from __future__ import annotations
 
+import hashlib
+import plistlib
 import re
+import struct
+from pathlib import Path
 from typing import Any
 
 from fastmcp import FastMCP
 
 from ._proc import run
+from .tools_codesign import _parse_codesign_dv
 
 LAUNCHD_DOMAIN_RE = re.compile(r"^(system|user/[0-9]+|gui/[0-9]+)$")
 UNSAFE_PATH_RE = re.compile(r"[\n\r;&|`$<>]")
+
+# Mach-O magic numbers for slice extraction in hash_target.
+MH_MAGIC_64 = 0xfeedfacf
+MH_CIGAM_64 = 0xcffaedfe
+MH_MAGIC = 0xfeedface
+MH_CIGAM = 0xcefaedfe
+FAT_MAGIC = 0xcafebabe
+FAT_CIGAM = 0xbebafeca
+FAT_MAGIC_64 = 0xcafebabf
+FAT_CIGAM_64 = 0xbfbafeca
+
+# Apple's CPU type / subtype subset we care about for slice naming.
+_CPU_NAMES = {
+    0x1000007: "x86_64",
+    0x100000c: "arm64",
+    0x0000007: "i386",
+    0x000000c: "arm",
+    0x100000d: "arm64_32",
+}
 
 
 def register(mcp: FastMCP) -> None:
@@ -158,6 +182,132 @@ def register(mcp: FastMCP) -> None:
         }
 
     @mcp.tool
+    def procinfo(target: str) -> dict[str, Any]:
+        """One-shot identity dump for a running PID or a binary path.
+
+        Combines codesign metadata, entitlements, bundle id, launchd
+        plist (if any matches the path), and -- for a PID -- the
+        responsible parent / executable path. The agent reaches for
+        this whenever it needs to answer "what is this process and
+        what is it allowed to do" without composing four tools.
+
+        ``target`` is either an integer PID or a filesystem path.
+        """
+        result: dict[str, Any] = {
+            "target": target,
+            "kind": "pid" if str(target).isdigit() else "path",
+            "errors": [],
+        }
+
+        path = target
+        pid = None
+
+        if str(target).isdigit():
+            pid = int(target)
+            ps = run(["/bin/ps", "-o", "comm=,ppid=,uid=,user=", "-p", str(pid)],
+                     timeout=10.0)
+            result["ps"] = ps.to_dict()
+            if ps.returncode == 0 and ps.stdout.strip():
+                fields = ps.stdout.strip().split()
+                if fields:
+                    path = fields[0]
+                    result["resolved_path"] = path
+                    if len(fields) >= 4:
+                        result["ppid"] = fields[1]
+                        result["uid"] = fields[2]
+                        result["user"] = fields[3]
+            else:
+                result["errors"].append("ps returned no row")
+
+        if not path or not isinstance(path, str):
+            result["errors"].append("could not resolve path from target")
+            return result
+
+        codesign = run(
+            ["/usr/bin/codesign", "-dvvv", "--entitlements", "-",
+             "--requirements", "-", path],
+            timeout=15.0,
+        )
+        result["codesign"] = codesign.to_dict()
+        result["codesign_parsed"] = _parse_codesign_dv(codesign.stderr)
+
+        ent = run(["/usr/bin/codesign", "-d", "--entitlements", ":-", path],
+                  timeout=15.0)
+        if ent.stdout:
+            try:
+                result["entitlements"] = plistlib.loads(
+                    ent.stdout.encode("utf-8", errors="surrogateescape"))
+            except Exception as exc:
+                result["entitlements_parse_error"] = str(exc)
+
+        # Match path to any launchd plist that names it.
+        launchd_match = run(
+            ["/usr/bin/grep", "-l", "-r", "-F", path,
+             "/Library/LaunchDaemons", "/Library/LaunchAgents",
+             "/System/Library/LaunchDaemons", "/System/Library/LaunchAgents"],
+            timeout=20.0,
+        )
+        if launchd_match.stdout.strip():
+            result["launchd_plists"] = launchd_match.stdout.strip().splitlines()
+
+        return result
+
+    @mcp.tool
+    def hash_target(path: str, slice_arch: str | None = None) -> dict[str, Any]:
+        """SHA256 the binary at ``path``, per-slice for fat universals.
+
+        Returns the file-level sha256 and, for fat binaries, a per-slice
+        hash table keyed by arch name (arm64, x86_64, etc.) so dynamic
+        evidence can pin to the exact byte sequence that ran.
+
+        If ``slice_arch`` is provided, returns only that slice's hash.
+        """
+        if unsafe_path(path):
+            return {
+                "returncode": 2, "stdout": "", "stderr": "unsafe path",
+                "timed_out": False, "path": path, "errors": ["unsafe path"],
+            }
+        try:
+            data = Path(path).read_bytes()
+        except OSError as exc:
+            return {
+                "returncode": 1, "stdout": "", "stderr": str(exc),
+                "timed_out": False, "path": path, "errors": [str(exc)],
+            }
+
+        full = hashlib.sha256(data).hexdigest()
+        result: dict[str, Any] = {
+            "returncode": 0, "stdout": "", "stderr": "", "timed_out": False,
+            "path": path, "size": len(data), "sha256": full,
+            "kind": "thin",
+        }
+
+        if len(data) < 8:
+            return result
+
+        magic = struct.unpack(">I", data[:4])[0]
+        if magic in (FAT_MAGIC, FAT_CIGAM, FAT_MAGIC_64, FAT_CIGAM_64):
+            result["kind"] = "fat"
+            try:
+                slices = _walk_fat_slices(data, magic)
+            except Exception as exc:
+                result["errors"] = [f"fat parse failed: {exc}"]
+                return result
+            result["slices"] = slices
+            if slice_arch:
+                for s in slices:
+                    if s["arch"] == slice_arch:
+                        result["sha256"] = s["sha256"]
+                        result["size"] = s["size"]
+                        break
+                else:
+                    result["errors"] = [f"slice {slice_arch!r} not found"]
+        elif magic in (MH_MAGIC, MH_CIGAM, MH_MAGIC_64, MH_CIGAM_64):
+            result["kind"] = "thin"
+
+        return result
+
+    @mcp.tool
     def os_build_snapshot() -> dict[str, Any]:
         """Capture read-only OS build, SIP, and software snapshot facts.
 
@@ -192,21 +342,44 @@ def unsafe_path(value: str) -> bool:
 
 
 def parse_launchctl_machservices(stdout: str) -> list[str]:
+    """Extract MachService names from a `launchctl print <domain>` dump.
+
+    The output has nested key = { ... } blocks. The MachServices block we
+    want is one of those. The previous implementation used max() on the
+    running depth which only ever rose, so once we entered MachServices
+    we never left -- subsequent unrelated reverse-DNS strings polluted
+    the output. This pass tracks the running depth correctly and exits
+    when the MachServices block's open brace closes.
+    """
     services: set[str] = set()
-    in_machservices = False
-    brace_depth = 0
     service_re = re.compile(r"([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_.-]+")
+    in_machservices = False
+    block_depth = 0  # depth at the moment MachServices opened
+    cur_depth = 0
+
     for line in stdout.splitlines():
-        if "MachServices" in line or "mach services" in line.lower():
-            in_machservices = True
-            brace_depth = max(brace_depth, line.count("{") - line.count("}"))
-        elif in_machservices:
-            brace_depth += line.count("{") - line.count("}")
-        if in_machservices:
-            for match in service_re.finditer(line):
-                services.add(match.group(0))
-            if brace_depth <= 0 and "}" in line:
-                in_machservices = False
+        opens = line.count("{")
+        closes = line.count("}")
+        if not in_machservices:
+            if "MachServices" in line or "mach services" in line.lower():
+                in_machservices = True
+                # We may see "MachServices = {" on the same line, or the
+                # opening brace on the next line. Either way, the depth
+                # *after* the opens on this line is where we want to
+                # return to before declaring the block done.
+                cur_depth += opens - closes
+                block_depth = cur_depth - (opens - closes)
+                continue
+            cur_depth += opens - closes
+            continue
+
+        # Inside the MachServices block.
+        for match in service_re.finditer(line):
+            services.add(match.group(0))
+        cur_depth += opens - closes
+        if cur_depth <= block_depth:
+            in_machservices = False
+
     return sorted(services)
 
 
@@ -230,10 +403,21 @@ def parse_systemextensionsctl(stdout: str) -> list[dict[str, str]]:
 
 
 def parse_otool_dependencies(stdout: str) -> list[str]:
-    deps = []
-    for line in stdout.splitlines()[1:]:
+    """Parse ``otool -L`` stdout into a list of dependency paths.
+
+    For fat binaries otool emits a "filename:" header per slice, so the
+    naive `splitlines()[1:]` skip silently dropped the first dep of every
+    slice past the first. We instead skip lines that look like headers
+    (end with ":" and don't contain a leading whitespace = path indent).
+    """
+    deps: list[str] = []
+    for line in stdout.splitlines():
         stripped = line.strip()
         if not stripped:
+            continue
+        # otool path lines are indented under the header; headers are
+        # flush-left and end with `:`.
+        if not line.startswith((" ", "\t")) and stripped.endswith(":"):
             continue
         deps.append(stripped.split(" (", 1)[0])
     return deps
@@ -247,6 +431,54 @@ def parse_sw_vers(stdout: str) -> dict[str, str]:
         key, value = line.split(":", 1)
         parsed[key.strip()] = value.strip()
     return parsed
+
+
+def _walk_fat_slices(data: bytes, magic: int) -> list[dict[str, Any]]:
+    """Walk a fat Mach-O wrapper and hash each contained slice.
+
+    Supports 32- and 64-bit fat headers and both endiannesses. Each
+    fat_arch entry carries (cputype, cpusubtype, offset, size, align).
+    """
+    big = magic in (FAT_MAGIC, FAT_MAGIC_64)
+    is_64 = magic in (FAT_MAGIC_64, FAT_CIGAM_64)
+    endian = ">" if big else "<"
+    nfat = struct.unpack(endian + "I", data[4:8])[0]
+    if nfat > 64:
+        raise ValueError(f"implausible nfat_arch={nfat}")
+
+    slices: list[dict[str, Any]] = []
+    if is_64:
+        entry_size = 32
+        fmt = endian + "iiQQI"
+    else:
+        entry_size = 20
+        fmt = endian + "iiIII"
+
+    cur = 8
+    for _ in range(nfat):
+        if len(data) < cur + entry_size:
+            break
+        cputype, cpusubtype, offset, size, align = struct.unpack(
+            fmt, data[cur:cur + entry_size]
+        )
+        cur += entry_size
+        end = offset + size
+        if offset < 0 or end > len(data):
+            slices.append({
+                "arch": _CPU_NAMES.get(cputype, f"cputype_{cputype}"),
+                "cputype": cputype, "cpusubtype": cpusubtype,
+                "offset": offset, "size": size,
+                "sha256": None, "error": "out of bounds",
+            })
+            continue
+        slice_bytes = data[offset:end]
+        slices.append({
+            "arch": _CPU_NAMES.get(cputype, f"cputype_{cputype}"),
+            "cputype": cputype, "cpusubtype": cpusubtype,
+            "offset": offset, "size": size,
+            "sha256": hashlib.sha256(slice_bytes).hexdigest(),
+        })
+    return slices
 
 
 def first_nonzero(*codes: int) -> int:

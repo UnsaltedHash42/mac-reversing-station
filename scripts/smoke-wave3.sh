@@ -132,6 +132,13 @@ else
     fail "Ghidra hunt script smoke failed" "bash tests/ghidra-scripts/smoke.sh"
 fi
 
+section "Triage"
+if python3 -m unittest tests.test_triage >/dev/null 2>&1; then
+    ok "candidate triage CLI passes unit tests"
+else
+    fail "triage unit tests failed" "python3 -m unittest tests.test_triage"
+fi
+
 section "Station hygiene"
 if python3 - <<'PY'
 from pathlib import Path

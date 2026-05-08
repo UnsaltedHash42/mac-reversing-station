@@ -458,29 +458,36 @@ def main():
         evidence.append("unverified_service_strings=%s" %
                         "|".join(unverified_services[:MAX_EVIDENCE_ITEMS]))
 
-    # Sanitize evidence values: pipe and tab are our delimiters.
-    safe_evidence = "; ".join(evidence).replace("\t", " ")
+    # Emit anchor rows in the standard tiered contract (see _re_lib.py).
+    from _re_lib import AnchorWriter, format_addr
 
-    emit("\t".join([
-        "target",
-        "verified_services",
-        "delegate_methods",
-        "listener_init_sites",
-        "interesting_entitlements",
-        "unverified_service_strings",
-        "fast_mode",
-        "evidence",
-    ]))
-    emit("\t".join([
-        program_name(),
-        str(len(verified_services)),
-        str(len(delegate_impls)),
-        str(len(listener_inits)),
-        str(len(ent_keys)),
-        str(len(unverified_services)),
-        "1" if FAST_MODE else "0",
-        safe_evidence,
-    ]))
+    writer = AnchorWriter("dump_xpc_listeners")
+
+    for api, fn_name, addr, arg in callsite_findings:
+        evid = "api=%s; service=%s" % (api, arg if arg else "<unresolved>")
+        writer.add("A", "xpc_registration_callsite", fn_name,
+                   format_addr(addr), evid)
+
+    for cls, sel, addr in delegate_impls:
+        writer.add("A", "nsxpc_delegate_impl", "%s.%s" % (cls, sel),
+                   format_addr(addr), "selector=%s" % sel)
+
+    for sel, addr in listener_inits:
+        writer.add("A", "nsxpc_listener_init", sel,
+                   format_addr(addr), "selector=%s" % sel)
+
+    for key in ent_keys:
+        writer.add("B", "interesting_entitlement", key, "-",
+                   "entitlement=%s" % key)
+
+    for service in unverified_services:
+        writer.add("C", "service_name_string", service, "-",
+                   "service=%s" % service)
+
+    if FAST_MODE:
+        writer.warn("fast_mode")
+
+    writer.flush()
 
 
 main()

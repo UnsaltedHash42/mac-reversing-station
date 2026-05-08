@@ -1,95 +1,92 @@
 # Ghidra script: scan one loaded program for user-defaults-gated security checks.
-# Output TSV:
-# target	type	domains	keys	bypass_strings	confidence	evidence
+#
+# Tier A (callsite-verified):
+#   defaults_callsite           callers of CFPreferencesCopyAppValue /
+#                               NSUserDefaults boolForKey: / standardUserDefaults
+#                               (resolved via name; NS selectors live in
+#                               objc metadata so coverage varies by binary)
+#
+# Tier B (function-name match):
+#   bypass_gate_impl            functions named *disable* / *bypass* / *override*
+#                               / *force* (internal toggles often live in
+#                               functions that read defaults).
+#
+# Tier C (string heuristic):
+#   defaults_api_string         NSUserDefaults / CFPreferences / standardUserDefaults
+#   defaults_key_candidate      bypass-shaped keys (short, no spaces, no slashes)
+#                               matching disable/bypass/skip/allow/override/internal
+#                               /debug/development/test/force/ignore vocabulary
+#   defaults_domain             reverse-DNS strings that look like preference domains
+#
+# @category Mach-O.DefaultsBypass
+# @runtime Jython
 
 import re
 
-
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
+from _re_lib import (
+    StringRule, format_addr, callers_of, find_external, run_string_scan,
+)
 
 
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        return currentProgram.getName()
+DEFAULTS_APIS = (
+    "CFPreferencesCopyAppValue",
+    "CFPreferencesCopyValue",
+    "CFPreferencesGetAppBooleanValue",
+    "CFPreferencesGetAppIntegerValue",
+)
 
 
-def iter_strings(limit=7000):
-    listing = currentProgram.getListing()
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
+def add_defaults_callsites(writer):
+    for api in DEFAULTS_APIS:
+        fn = find_external(api)
+        if fn is None:
             continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
-            continue
-        seen += 1
-        yield text
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "defaults_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
 
 
-def classify_target(name):
-    lowered = name.lower()
-    if "launchagents" in lowered or lowered.endswith(".app"):
-        return "launchagent-or-user-context"
-    if "launchdaemons" in lowered or "/sbin/" in lowered or "/usr/libexec/" in lowered:
-        return "launchdaemon-or-system-context"
-    return "unknown"
-
-
-domain_re = re.compile(r"([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_-]+")
-defaults_re = re.compile(r"(NSUserDefaults|CFPreferences|defaults\s+write|standardUserDefaults|UserDefaults)", re.I)
-bypass_re = re.compile(
+_BYPASS_TOKEN = re.compile(
     r"(disable|bypass|skip|allow|override|internal|debug|development|test|force|ignore)",
     re.I,
 )
+_DOMAIN = re.compile(r"^([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_-]+$")
 
-strings = list(iter_strings())
-default_strings = [s for s in strings if defaults_re.search(s)]
-bypass_strings = [s for s in strings if bypass_re.search(s)]
-domains = sorted({m.group(0) for s in strings for m in domain_re.finditer(s)})
-keys = sorted(
-    {
-        s
-        for s in strings
-        if bypass_re.search(s) and len(s) <= 96 and " " not in s and "/" not in s
-    }
-)
 
-score = 0
-score += 2 if default_strings else 0
-score += 2 if keys else 0
-score += 1 if domains else 0
-score += 1 if bypass_strings else 0
-confidence = "high" if score >= 5 else ("medium" if score >= 3 else ("low" if score else "none"))
+def _is_bypass_key(text):
+    if " " in text or "/" in text:
+        return False
+    if len(text) > 96 or len(text) < 4:
+        return False
+    return bool(_BYPASS_TOKEN.search(text))
 
-evidence = []
-if default_strings:
-    evidence.append("defaults_api=%s" % "|".join(default_strings[:3]).replace("\t", " "))
-if keys:
-    evidence.append("keys=%s" % "|".join(keys[:5]).replace("\t", " "))
-if bypass_strings:
-    evidence.append("bypass=%s" % "|".join(bypass_strings[:5]).replace("\t", " "))
 
-name = program_name()
-emit("target\ttype\tdomains\tkeys\tbypass_strings\tconfidence\tevidence")
-emit(
-    "%s\t%s\t%d\t%d\t%d\t%s\t%s"
-    % (
-        name,
-        classify_target(name),
-        len(domains),
-        len(keys),
-        len(bypass_strings),
-        confidence,
-        "; ".join(evidence),
-    )
+def _is_domain(text):
+    return bool(_DOMAIN.match(text))
+
+
+run_string_scan(
+    scan_name="scan_defaults_bypass",
+    rules=[
+        StringRule("C", "defaults_api_string",
+                   r"(NSUserDefaults|CFPreferences|standardUserDefaults|UserDefaults|defaults\s+write)",
+                   max_anchors=16, evidence_label="api"),
+        StringRule("C", "defaults_key_candidate",
+                   r".",  # accept all; filter handles selectivity
+                   max_anchors=24, evidence_label="key",
+                   accept=_is_bypass_key),
+        StringRule("C", "defaults_domain",
+                   r".",
+                   max_anchors=12, evidence_label="domain",
+                   accept=_is_domain),
+    ],
+    function_rules=[
+        StringRule("B", "bypass_gate_impl",
+                   r"(disable|bypass|override|force|skip|allow).{0,40}(check|validation|gate|signing|amfi|sip|enforce)",
+                   max_anchors=12, evidence_label="function"),
+    ],
+    enrich=add_defaults_callsites,
 )
