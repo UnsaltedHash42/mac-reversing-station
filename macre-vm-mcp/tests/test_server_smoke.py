@@ -26,6 +26,8 @@ EXPECTED_TOOLS = {
     "system_extension_list",
     "framework_dependency_map",
     "os_build_snapshot",
+    "procinfo",
+    "hash_target",
 }
 
 

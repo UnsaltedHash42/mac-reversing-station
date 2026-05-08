@@ -7,6 +7,7 @@ for Apple-signed binaries are restricted; the skill docs call this out.
 
 from __future__ import annotations
 
+import shlex
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -53,7 +54,11 @@ def register(mcp: FastMCP) -> None:
             if target_pid is not None:
                 argv.extend(["-p", str(int(target_pid))])
             if target_command:
-                argv.extend(["-c", " ".join(target_command)])
+                # `dtrace -c <cmd>` runs <cmd> through /bin/sh, so caller
+                # arguments need shell-quoting to survive spaces and
+                # metacharacters. shlex.join builds a string sh will
+                # re-tokenize the way the caller intended.
+                argv.extend(["-c", shlex.join(target_command)])
             return run(argv, timeout=timeout_sec).to_dict()
         finally:
             try:
