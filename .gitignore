@@ -74,6 +74,9 @@ apple-sources/
 !templates/findings-repo/tools/
 !templates/findings-repo/tools/custom/
 !templates/findings-repo/tools/custom/.gitkeep
+!templates/findings-repo/templates/
+!templates/findings-repo/templates/poc/
+!templates/findings-repo/templates/poc/README.md.template
 
 # Large/local source material
 *.pdf

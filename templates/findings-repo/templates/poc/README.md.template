@@ -1,0 +1,78 @@
+# PoC: <POC-ID>
+
+| Field | Value |
+|-------|-------|
+| PoC ID | `POC-NNN` |
+| Target ID | `<target-id>` |
+| Candidate / Chain ID | `C-NNN` (link to CORPUS.md Exploitability And Chainability) |
+| Status | `scaffolding` |
+| Lab Disposable | `true` / `false` (must match LAB_SAFETY.md) |
+| Reliability Target | `deterministic` / `race-bound` / `probabilistic` |
+| Created | `YYYY-MM-DDTHH:MM:SSZ` UTC |
+
+## Primitive
+
+One paragraph naming the primitive: input the attacker controls, validation that should hold, validation that fails, resulting capability.
+
+## Chain Hypothesis (if applicable)
+
+Two or three sentences naming the chain partners and how they stitch. Reference CORPUS Exploitability And Chainability row(s).
+
+## Prerequisites
+
+- Pre-existing TCC grants:
+- Helper installation:
+- Snapshot state:
+- OS build:
+- Hardware (Intel / Apple Silicon, generation):
+- Other:
+
+## Lab State Required
+
+- Snapshot label:
+- Network isolation tier:
+- Test users:
+- File system seeding:
+- Other:
+
+## Expected Impact
+
+- Trust boundary crossed:
+- Capability gained:
+- Persistence (intended or accidental):
+
+## Risk
+
+- Panic-prone:
+- Kernel-touching:
+- Helper-replacement:
+- Filesystem-corrupting:
+- Other:
+
+## Harness Layout
+
+- `harness/` — active harness source.
+- `runs/<UTC-timestamp>/` — per-run records (stdout.log, stderr.log, notes.md).
+- `evidence/` — artifacts the harness produced (logs, dumps, screenshots).
+
+## Run Log
+
+| Run UTC | Snapshot Before | Outcome | Notes |
+|---------|-----------------|---------|-------|
+
+## Reliability Notes
+
+Free-form notes on hit rate, race-window measurement, retry strategy, failure modes.
+
+## Status History
+
+| Date UTC | From | To | Note |
+|----------|------|----|------|
+
+## Linked Records
+
+- CORPUS PoC Tracking row: `POC-NNN`
+- CORPUS Exploitability And Chainability row(s): `C-NNN`
+- Scriptorium anchor: `<anchor-id>`
+- Chronicle entries: dates of status changes
+- VM_ACTIONS rows: timestamps of harness runs
