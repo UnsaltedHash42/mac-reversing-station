@@ -30,6 +30,38 @@ OS_COMPONENT_BUNDLE_SUFFIXES = (
 
 DAEMON_NAME_HINTS = ("daemon", "helper", "service")
 
+# Per-surface maturity tiers Watch reports in CORPUS Watch Decision Support.
+# - "full-recipe": surface has a Maproom recipe and supporting Ghidra/MCP coverage.
+# - "basic-inventory": intake recognizes the surface; the operator drives the
+#   recipe manually until a focused workflow lands.
+# - "manual-route-needed": catch-all for surfaces with no paired recipe; these
+#   are surfaced as coverage gaps so the next move is operator-led.
+SURFACE_MATURITY = {
+    "xpc-services": "full-recipe",
+    "launchd-jobs": "full-recipe",
+    "launchd-machservices": "full-recipe",
+    "privileged-helper-tools": "full-recipe",
+    "private-framework-dep": "full-recipe",
+    "apple-signed": "full-recipe",
+    "os-component": "full-recipe",
+    "updater": "full-recipe",
+    "privacy-permissions": "full-recipe",
+    "keychain": "full-recipe",
+    "plugin-or-extension": "full-recipe",
+    "electron-app": "full-recipe",
+    "asar-archive": "full-recipe",
+    "electron-preload-scripts": "full-recipe",
+    "electron-native-modules": "full-recipe",
+    "system-extension": "basic-inventory",
+    "network-extension": "basic-inventory",
+    "endpoint-security-client": "basic-inventory",
+    "driverkit": "basic-inventory",
+    "appex": "basic-inventory",
+    "dyld-shared-cache-origin": "basic-inventory",
+}
+
+MATURITY_TIERS = ("full-recipe", "basic-inventory", "manual-route-needed")
+
 
 @dataclass(frozen=True)
 class IntakeResult:
@@ -455,13 +487,53 @@ def build_decision_support(inventory: dict[str, Any]) -> dict[str, Any]:
         coverage_gaps.append("No family-specific Ghidra sweep selected from intake alone.")
 
     coverage_gaps.append("Codesign, entitlements, notarization, and load-command details require follow-up tooling.")
+
+    maturity = surface_maturity_map(sorted(surfaces))
+    maturity_gaps = maturity_coverage_gaps(maturity)
+    coverage_gaps.extend(maturity_gaps)
+
     return {
         "watch_version": 1,
         "recommended_recipes": dedupe(recipes),
         "recommended_ghidra_scripts": dedupe(ghidra_scripts),
         "coverage_gaps": dedupe(coverage_gaps),
+        "maturity": maturity,
+        "maturity_summary": maturity_summary_text(maturity),
         "next_decision": next_decision(dedupe(recipes), dedupe(ghidra_scripts)),
     }
+
+
+def surface_maturity_map(surfaces: list[str]) -> dict[str, str]:
+    return {surface: SURFACE_MATURITY.get(surface, "manual-route-needed") for surface in surfaces}
+
+
+def maturity_summary_text(maturity: dict[str, str]) -> str:
+    if not maturity:
+        return "no observed surfaces"
+    counts: dict[str, list[str]] = {tier: [] for tier in MATURITY_TIERS}
+    for surface, tier in sorted(maturity.items()):
+        counts.setdefault(tier, []).append(surface)
+    parts: list[str] = []
+    for tier in MATURITY_TIERS:
+        members = counts.get(tier, [])
+        if members:
+            parts.append(f"{tier}: {', '.join(members)}")
+    return "; ".join(parts) or "no observed surfaces"
+
+
+def maturity_coverage_gaps(maturity: dict[str, str]) -> list[str]:
+    gaps: list[str] = []
+    basic = sorted(s for s, tier in maturity.items() if tier == "basic-inventory")
+    manual = sorted(s for s, tier in maturity.items() if tier == "manual-route-needed")
+    if basic:
+        gaps.append(
+            "Basic-inventory surfaces (operator drives the recipe): " + ", ".join(basic) + "."
+        )
+    if manual:
+        gaps.append(
+            "Manual-route-needed surfaces (no paired recipe yet): " + ", ".join(manual) + "."
+        )
+    return gaps
 
 
 def build_dossier(inventory: dict[str, Any]) -> dict[str, Any]:
@@ -708,9 +780,10 @@ def watch_row_for(inventory: dict[str, Any]) -> str:
     support = inventory["decision_support"]
     recipes = ", ".join(support["recommended_recipes"])
     gaps = "; ".join(support["coverage_gaps"])
+    maturity = support.get("maturity_summary") or maturity_summary_text(support.get("maturity", {}))
     return (
         f"| {inventory['target']['id']} | {inventory['pass_id']} | `{inventory['dossier_path']}` | "
-        f"{recipes} | {gaps} | {support['next_decision']} |"
+        f"{recipes} | {maturity} | {gaps} | {support['next_decision']} |"
     )
 
 

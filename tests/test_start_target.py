@@ -472,6 +472,53 @@ class TestStartTarget(unittest.TestCase):
         self.assertIn("os-component", data["classification"]["surfaces"])
         self.assertIn("apple-os-components", data["classification"]["family_labels"])
 
+    def test_watch_decision_support_records_per_surface_maturity(self) -> None:
+        app = self.make_app()
+        sysext_root = app / "Contents/Library/SystemExtensions/com.example.sysext.systemextension"
+        sysext_macos = sysext_root / "Contents/MacOS"
+        sysext_macos.mkdir(parents=True)
+        with (sysext_root / "Contents/Info.plist").open("wb") as fh:
+            dump({"CFBundleIdentifier": "com.example.sysext"}, fh)
+
+        proc = self.run_script(str(app), "--pass-id", "PASS-110")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        data = json.loads(
+            (self.project / "findings/analysis/PASS-110-example-target-map.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        maturity = data["decision_support"]["maturity"]
+        self.assertEqual(maturity.get("xpc-services"), "full-recipe")
+        self.assertEqual(maturity.get("system-extension"), "basic-inventory")
+        # The os-component umbrella should also appear since system-extension is present.
+        self.assertEqual(maturity.get("os-component"), "full-recipe")
+        gaps = data["decision_support"]["coverage_gaps"]
+        self.assertTrue(
+            any("system-extension" in gap and "Basic-inventory" in gap for gap in gaps),
+            msg=f"expected basic-inventory gap mentioning system-extension; gaps={gaps}",
+        )
+
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        # Watch row carries a maturity summary segment ("full-recipe: ...; basic-inventory: ...").
+        self.assertIn("basic-inventory: system-extension", corpus)
+        # Re-running intake updates the row in place rather than appending duplicates.
+        second = self.run_script(str(app), "--pass-id", "PASS-110")
+        self.assertEqual(second.returncode, 0, msg=second.stdout + second.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        self.assertEqual(
+            corpus.count("| example | PASS-110 | `findings/analysis/PASS-110-example-dossier.json` |"),
+            1,
+        )
+
+    def test_unknown_surface_is_marked_manual_route_needed(self) -> None:
+        # Pure-function spot check: an unrecognized surface name falls back to manual-route-needed.
+        maturity = start_target_module.surface_maturity_map(["xpc-services", "frobnicator"])
+        self.assertEqual(maturity["xpc-services"], "full-recipe")
+        self.assertEqual(maturity["frobnicator"], "manual-route-needed")
+        gaps = start_target_module.maturity_coverage_gaps(maturity)
+        self.assertTrue(any("frobnicator" in gap for gap in gaps))
+
 
 class TestStartTargetHelpers(unittest.TestCase):
     """Pure-function tests for U1 helpers (parsing logic, no subprocess required)."""

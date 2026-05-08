@@ -26,10 +26,10 @@ Agent-maintained component inventory. Keep this summarized; large generated maps
 
 ## Watch Decision Support
 
-Watch is the keep's static-analysis decision layer. It turns intake and first-pass static facts into recommended recipes, Ghidra sweeps, coverage gaps, and next operator decisions.
+Watch is the keep's static-analysis decision layer. It turns intake and first-pass static facts into recommended recipes, Ghidra sweeps, coverage gaps, and next operator decisions. The Maturity column summarizes which observed surfaces have full recipes, which have basic inventory only, and which still need manual routing — Watch should not overclaim support for a subsystem.
 
-| Target ID | Pass ID | Dossier Path | Recommended Recipes | Coverage Gaps | Next Decision |
-|-----------|---------|--------------|---------------------|---------------|---------------|
+| Target ID | Pass ID | Dossier Path | Recommended Recipes | Maturity | Coverage Gaps | Next Decision |
+|-----------|---------|--------------|---------------------|----------|---------------|---------------|
 
 ## Source-Binary Correlation
 
