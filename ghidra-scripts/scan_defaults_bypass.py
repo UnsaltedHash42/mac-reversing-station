@@ -1,10 +1,15 @@
 # Ghidra script: scan one loaded program for user-defaults-gated security checks.
 #
-# Tier A (callsite-verified):
-#   defaults_callsite           callers of CFPreferencesCopyAppValue /
-#                               NSUserDefaults boolForKey: / standardUserDefaults
-#                               (resolved via name; NS selectors live in
-#                               objc metadata so coverage varies by binary)
+# Tier A (decompiler-recovered callsite + literal arg):
+#   cfprefs_copyappvalue_callsite       defaults key (arg 0, CFStringRef)
+#   cfprefs_copyvalue_callsite          defaults key (arg 0)
+#   cfprefs_getbool_callsite            defaults key (arg 0)
+#   cfprefs_getint_callsite             defaults key (arg 0)
+#   cfprefs_setvalue_callsite           defaults key being set (arg 0)
+#
+# Recovering the key turns a vague "this binary reads defaults" into
+# "this binary reads `disable-amfi-dyld-trust` from `com.apple.foo`" --
+# direct triage signal for the bypass-gate hunt.
 #
 # Tier B (function-name match):
 #   bypass_gate_impl            functions named *disable* / *bypass* / *override*
@@ -23,30 +28,23 @@
 
 import re
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-DEFAULTS_APIS = (
-    "CFPreferencesCopyAppValue",
-    "CFPreferencesCopyValue",
-    "CFPreferencesGetAppBooleanValue",
-    "CFPreferencesGetAppIntegerValue",
-)
-
-
-def add_defaults_callsites(writer):
-    for api in DEFAULTS_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "defaults_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("CFPreferencesCopyAppValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_copyappvalue_callsite", evidence_label="key"),
+    APISpec("CFPreferencesCopyValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_copyvalue_callsite", evidence_label="key"),
+    APISpec("CFPreferencesGetAppBooleanValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_getbool_callsite", evidence_label="key"),
+    APISpec("CFPreferencesGetAppIntegerValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_getint_callsite", evidence_label="key"),
+    APISpec("CFPreferencesSetAppValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_setappvalue_callsite", evidence_label="key"),
+    APISpec("CFPreferencesSetValue", arg_index=0, recover_kind="string",
+            anchor_kind="cfprefs_setvalue_callsite", evidence_label="key"),
+]
 
 
 _BYPASS_TOKEN = re.compile(
@@ -75,7 +73,7 @@ run_string_scan(
                    r"(NSUserDefaults|CFPreferences|standardUserDefaults|UserDefaults|defaults\s+write)",
                    max_anchors=16, evidence_label="api"),
         StringRule("C", "defaults_key_candidate",
-                   r".",  # accept all; filter handles selectivity
+                   r".",
                    max_anchors=24, evidence_label="key",
                    accept=_is_bypass_key),
         StringRule("C", "defaults_domain",
@@ -88,5 +86,5 @@ run_string_scan(
                    r"(disable|bypass|override|force|skip|allow).{0,40}(check|validation|gate|signing|amfi|sip|enforce)",
                    max_anchors=12, evidence_label="function"),
     ],
-    enrich=add_defaults_callsites,
+    api_specs=API_SPECS,
 )

@@ -1,8 +1,15 @@
 # Ghidra script: scan one loaded program for launchd / MachService topology.
 #
-# Tier A (callsite-verified):
-#   bootstrap_callsite          callers of bootstrap_check_in /
-#                               bootstrap_register / xpc_connection_create_mach_service
+# Tier A (decompiler-recovered callsite + literal arg):
+#   bootstrap_check_in_callsite         service name (arg 0, char*)
+#   bootstrap_register_callsite         service name (arg 1)
+#   xpc_create_mach_service_callsite    service name (arg 0)
+#   xpc_create_listener_callsite        endpoint name (arg 0)
+#   xpc_lookup_callsite                 service name (arg 0)
+#
+# A recovered service name from a callsite is the strongest evidence
+# you can have without launchd plists. Pair with the launchctl print
+# output captured by macre-vm-mcp.
 #
 # Tier B (function-name match):
 #   listener_setup_impl         functions named *resume / *registerForXPC /
@@ -21,30 +28,23 @@
 
 import re
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-BOOTSTRAP_APIS = (
-    "bootstrap_check_in",
-    "bootstrap_register",
-    "xpc_connection_create_mach_service",
-    "xpc_connection_create_listener",
-)
-
-
-def add_bootstrap_callsites(writer):
-    for api in BOOTSTRAP_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "bootstrap_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("bootstrap_check_in", arg_index=1, recover_kind="string",
+            anchor_kind="bootstrap_check_in_callsite", evidence_label="service"),
+    APISpec("bootstrap_register", arg_index=1, recover_kind="string",
+            anchor_kind="bootstrap_register_callsite", evidence_label="service"),
+    APISpec("bootstrap_look_up", arg_index=1, recover_kind="string",
+            anchor_kind="bootstrap_look_up_callsite", evidence_label="service"),
+    APISpec("xpc_connection_create_mach_service", arg_index=0, recover_kind="string",
+            anchor_kind="xpc_create_mach_service_callsite", evidence_label="service"),
+    APISpec("xpc_connection_create_listener", arg_index=0, recover_kind="string",
+            anchor_kind="xpc_create_listener_callsite", evidence_label="endpoint"),
+    APISpec("xpc_connection_create", arg_index=0, recover_kind="string",
+            anchor_kind="xpc_connection_create_callsite", evidence_label="service"),
+]
 
 
 _REV_DNS = re.compile(r"^([A-Za-z0-9_-]+\.){2,}[A-Za-z0-9_.-]+$")
@@ -79,5 +79,5 @@ run_string_scan(
                    r"(NSXPCListener|initWithMachServiceName|registerForXPC|startListening|setupListener|listener.{0,20}resume)",
                    max_anchors=12, evidence_label="function"),
     ],
-    enrich=add_bootstrap_callsites,
+    api_specs=API_SPECS,
 )

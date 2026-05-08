@@ -1,11 +1,19 @@
 # Ghidra script: scan one loaded program for persistent authorization /
 # bookmark / keychain / sandbox-extension surface.
 #
-# Tier A (callsite-verified):
-#   keychain_callsite           callers of SecItemAdd / SecItemCopyMatching /
-#                               SecKeychainAddGenericPassword
-#   bookmark_callsite           callers of CFURLCreateBookmarkData /
-#                               URLByResolvingBookmarkData
+# Tier A (decompiler-recovered callsite + literal arg):
+#   secitemadd_callsite                 callsite (arg 0 is CFDictionary; record site)
+#   secitemcopymatching_callsite        callsite (arg 0 is CFDictionary)
+#   seckeychainaddgenericpassword       service name (arg 1, char*)
+#                                       account name (arg 3, char*) -- recover service only
+#   seckeychainfindgenericpassword      service name (arg 1)
+#   urlbookmarkdata_callsite            options (arg 1, const)
+#   sandbox_extension_consume_callsite  extension token (arg 0, char*)
+#   sandbox_extension_issue_file        path (arg 0, char*) and class (arg 1)
+#
+# The string args here name the *named resource* the binary is asking
+# about (keychain service, sandbox-extension path) -- exactly what
+# the persistent-authorization hunt cares about.
 #
 # Tier B (function-name match):
 #   bookmark_handler            functions named *bookmark* / *startAccessing*
@@ -20,48 +28,31 @@
 # @category Mach-O.PersistentAuthorization
 # @runtime Jython
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-KEYCHAIN_APIS = (
-    "SecItemAdd",
-    "SecItemCopyMatching",
-    "SecItemUpdate",
-    "SecKeychainAddGenericPassword",
-    "SecKeychainFindGenericPassword",
-)
-
-BOOKMARK_APIS = (
-    "CFURLCreateBookmarkData",
-    "CFURLCreateByResolvingBookmarkData",
-    "URLByResolvingBookmarkData",
-    "bookmarkDataWithOptions",
-)
-
-
-def add_callsites(writer):
-    for api in KEYCHAIN_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "keychain_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
-    for api in BOOKMARK_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "bookmark_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("SecItemAdd", arg_index=0, recover_kind="none",
+            anchor_kind="secitemadd_callsite"),
+    APISpec("SecItemCopyMatching", arg_index=0, recover_kind="none",
+            anchor_kind="secitemcopymatching_callsite"),
+    APISpec("SecItemUpdate", arg_index=0, recover_kind="none",
+            anchor_kind="secitemupdate_callsite"),
+    APISpec("SecKeychainAddGenericPassword", arg_index=1, recover_kind="string",
+            anchor_kind="seckeychainadd_callsite", evidence_label="service"),
+    APISpec("SecKeychainFindGenericPassword", arg_index=1, recover_kind="string",
+            anchor_kind="seckeychainfind_callsite", evidence_label="service"),
+    APISpec("CFURLCreateBookmarkData", arg_index=2, recover_kind="const",
+            anchor_kind="bookmark_create_callsite", evidence_label="options"),
+    APISpec("CFURLCreateByResolvingBookmarkData", arg_index=2, recover_kind="const",
+            anchor_kind="bookmark_resolve_callsite", evidence_label="options"),
+    APISpec("sandbox_extension_consume", arg_index=0, recover_kind="string",
+            anchor_kind="sandbox_extension_consume_callsite", evidence_label="token"),
+    APISpec("sandbox_extension_issue_file", arg_index=0, recover_kind="string",
+            anchor_kind="sandbox_extension_issue_callsite", evidence_label="path"),
+    APISpec("sandbox_extension_release", arg_index=0, recover_kind="const",
+            anchor_kind="sandbox_extension_release_callsite", evidence_label="handle"),
+]
 
 
 run_string_scan(
@@ -88,5 +79,5 @@ run_string_scan(
                    r"(extension|consume|issue_extension|sandbox_extension)",
                    max_anchors=12, evidence_label="function"),
     ],
-    enrich=add_callsites,
+    api_specs=API_SPECS,
 )

@@ -73,12 +73,19 @@ Medium anchors include platform strings and entitlement strings in the same bina
    ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_catalyst_porting_gap.py", script_args=[])
    ```
 
-3. Save TSV:
+3. Save TSV (unified tiered-anchor contract):
 
    ```text
-   target	catalyst_refs	platform_checks	entitlement_refs	bypass_refs	confidence	evidence
-   /path/to/daemon	2	5	7	1	high	catalyst=...
+   target  tier  anchor_kind            name                     address      evidence
+   /path/to/daemon  B  platform_branch        _isCatalystOrIOSApp      0x10000a000  function=_isCatalystOrIOSApp
+   /path/to/daemon  C  catalyst_string        is-catalyst-binary       -            string=is-catalyst-binary
+   /path/to/daemon  C  bypass_string          non macos platform       -            string=non macos platform
    ```
+
+   This script is intentionally string- and metadata-heavy: there is
+   no single Apple API whose argument tells you "this is the Catalyst
+   branch." The tier-B `platform_branch` rows are the navigation
+   targets; decompile each and inspect the both arms of the conditional.
 
 4. Decompile around the strongest evidence string and draw a reachability diagram:
 

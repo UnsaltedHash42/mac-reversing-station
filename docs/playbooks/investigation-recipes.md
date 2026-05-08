@@ -166,3 +166,39 @@ Recipe ID: `apple-source-correlation`
 - **Run:** `scripts/fetch-apple-source.py`, `Skills/offensive-macos-source-binary-correlation`, `scripts/start-target.py`.
 - **Expected outputs:** Gitignored Apple source cache path, source ref/URL metadata, binary-correlation questions, and confidence state.
 - **State updates:** `CORPUS.md` Apple Source Map, Source-Binary Correlation, Watch Decision Support coverage gaps.
+
+## tcc-prompt-attribution
+
+Recipe ID: `tcc-prompt-attribution`
+
+- **Use when:** A TCC-mediating daemon resolves the requesting client identity via pid / bundle id / executable path rather than `audit_token_t`, or a privacy prompt names the wrong responsible app.
+- **Run:** `Skills/offensive-macos-hunt-tcc-prompt-attribution`, `ghidra-scripts/scan_tcc_prompt_surface.py`, `ghidra-scripts/dump_xpc_listeners.py`.
+- **Expected outputs:** Tier-A `tccaccessrequest_callsite` rows with recovered service names, decompiled identity-resolution paths, classification of each path as `audit_token` / `pid` / `bundle_id` / `path` / `inherited`.
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path.
+
+## iokit-userclient-selectors
+
+Recipe ID: `iokit-userclient-selectors`
+
+- **Use when:** A user-mode binary opens an IOKit user client and you want the (driver class, selector list) inventory before going kernel-side.
+- **Run:** `Skills/offensive-macos-hunt-iokit-userclient`, `ghidra-scripts/scan_iokit_user_clients.py`.
+- **Expected outputs:** Tier-A `ioservice_matching_callsite` + class arg rows; tier-A `ioconnect_call_*_callsite` + selector-const rows; (class, selector, kernel-method) inventory after correlating with the kext / dext.
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path. **Lab safety:** kernel work on crash-test VM only.
+
+## private-framework-hijack
+
+Recipe ID: `private-framework-hijack`
+
+- **Use when:** A binary weak-links a PrivateFramework, calls `dlopen` with a constructed path, or uses `NSClassFromString` with a name from defaults / config.
+- **Run:** `Skills/offensive-macos-hunt-private-framework-hijack`, `ghidra-scripts/scan_private_framework_dependency.py`, `ghidra-scripts/scan_defaults_bypass.py`.
+- **Expected outputs:** Tier-A `dlopen_callsite` + path arg, `nsclassfromstring_callsite` + class arg, classification by path source (literal / bundle resource / user-writable / xpc arg / network).
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path.
+
+## url-scheme-hijack
+
+Recipe ID: `url-scheme-hijack`
+
+- **Use when:** A bundle declares `CFBundleURLTypes` and implements `application:openURL:` / `application:openURLs:`.
+- **Run:** `Skills/offensive-macos-hunt-url-scheme-hijack`, `ghidra-scripts/scan_url_scheme_handlers.py`.
+- **Expected outputs:** Tier-A `ls_set_default_handler_callsite` + scheme arg, `cfurl_create_with_string_callsite` + url arg; (scheme, action, validation) inventory from decompiled `application:openURL:` impls.
+- **State updates:** `INDEX.md`, `METRICS.md`, Scriptorium evidence path.

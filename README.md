@@ -58,7 +58,15 @@ The skills you will reach for repeatedly:
 - `gatehouse-ghidra-lldb` (static→dynamic), `scriptorium-evidence` (continuity)
 - `chain-discovery`, `poc-authoring`, `submission-packet` (exit)
 
-The hunt skills (`hunt-wrong-door`, `hunt-defaults-bypass`, `hunt-catalyst-porting-gap`) are one bug class each. Read the one that matches the target before the sweep, not after.
+The hunt skills are one bug class each. Read the one that matches the target before the sweep, not after.
+
+- `hunt-wrong-door` — XPC clients trusted by daemons that should validate them.
+- `hunt-defaults-bypass` — security checks gated on user-writable `defaults` keys.
+- `hunt-catalyst-porting-gap` — iOS-style entitlement assumptions that did not survive the macOS port.
+- `hunt-tcc-prompt-attribution` — TCC prompts naming the wrong responsible app; pid-only attribution.
+- `hunt-iokit-userclient` — IOKit user-client selector / scalar / struct surface.
+- `hunt-private-framework-hijack` — attacker-influenced `dlopen` / `NSClassFromString` paths.
+- `hunt-url-scheme-hijack` — custom URL scheme handlers trusting URL parameters.
 
 ## Operating model
 
