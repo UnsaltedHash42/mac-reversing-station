@@ -138,4 +138,8 @@ authored proofs.
   PrivateFrameworks, system/network extensions, Endpoint Security clients,
   DriverKit components, and the launchd/MachService surfaces that connect
   them.
+- `Skills/offensive-macos-chain-discovery` — corpus-driven static workflow
+  for stitching candidate primitives into vulnerability chains, rating
+  exploitability, and identifying the next experiment that advances each
+  chain toward a PoC.
 
