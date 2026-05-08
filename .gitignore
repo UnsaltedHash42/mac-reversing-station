@@ -55,6 +55,9 @@ HANDOFF.md
 CLAUDE_CODE.md
 CHEATSHEET.md
 
+# Claude Code local state (worktrees, project settings, memory)
+.claude/
+
 # PoC scaffolding outputs - keep target-specific PoC code, harnesses, and chain
 # artifacts in private project clones, not the reusable template repo.
 pocs/

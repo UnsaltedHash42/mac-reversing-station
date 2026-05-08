@@ -15,6 +15,8 @@ INSTALL_SSH_KEY=1
 INSTALL_GHIDRA=1
 INSTALL_DYNAMIC=1
 WRITE_MCP=1
+WRITE_CURSOR=1
+WRITE_CLAUDE_CODE=1
 RUN_LIVE_SMOKE=0
 
 usage() {
@@ -32,7 +34,9 @@ Options:
   --skip-ssh-key             Do not install ~/.ssh/id_ed25519.pub on the lab host
   --skip-ghidra              Do not install or check Ghidra/ghidra-mcp
   --skip-dynamic             Do not deploy macre-vm-mcp
-  --skip-mcp-config          Do not write ~/.cursor/mcp.json
+  --skip-mcp-config          Do not write MCP config for either Cursor or Claude Code
+  --cursor-only              Only write Cursor config (skip Claude Code)
+  --claude-code-only         Only write Claude Code config (skip Cursor)
   --live-smoke               Run live lab-host smoke checks after setup
   -h, --help                 Show this help
 
@@ -59,6 +63,10 @@ while [[ $# -gt 0 ]]; do
             INSTALL_DYNAMIC=0; shift ;;
         --skip-mcp-config)
             WRITE_MCP=0; shift ;;
+        --cursor-only)
+            WRITE_CLAUDE_CODE=0; shift ;;
+        --claude-code-only)
+            WRITE_CURSOR=0; shift ;;
         --live-smoke)
             RUN_LIVE_SMOKE=1; shift ;;
         -h|--help)
@@ -83,8 +91,15 @@ export MACRE_REMOTE_PYTHON="${REMOTE_PYTHON}"
 
 section() { printf '\n==> %s\n' "$1"; }
 
-section "Link Cursor skills"
-bash "${ROOT}/cursor/skill-link.sh"
+if [[ "${WRITE_CURSOR}" -eq 1 ]]; then
+    section "Link Cursor skills"
+    bash "${ROOT}/cursor/skill-link.sh"
+fi
+
+if [[ "${WRITE_CLAUDE_CODE}" -eq 1 ]]; then
+    section "Link Claude Code skills"
+    bash "${ROOT}/scripts/skill-link-claude-code.sh"
+fi
 
 section "Ensure local SSH key exists"
 mkdir -p "${HOME}/.ssh"
@@ -119,9 +134,14 @@ if [[ "${INSTALL_DYNAMIC}" -eq 1 ]]; then
     bash "${ROOT}/scripts/deploy-macre-vm-mcp.sh"
 fi
 
-if [[ "${WRITE_MCP}" -eq 1 ]]; then
+if [[ "${WRITE_MCP}" -eq 1 && "${WRITE_CURSOR}" -eq 1 ]]; then
     section "Write Cursor MCP config"
     python3 "${ROOT}/scripts/configure-cursor-mcp.py" --host "${HOST}" --remote-home "${REMOTE_HOME}"
+fi
+
+if [[ "${WRITE_MCP}" -eq 1 && "${WRITE_CLAUDE_CODE}" -eq 1 ]]; then
+    section "Write Claude Code MCP config"
+    python3 "${ROOT}/scripts/configure-claude-code-mcp.py" --host "${HOST}" --remote-home "${REMOTE_HOME}"
 fi
 
 section "Run structural smoke"
@@ -139,7 +159,7 @@ cat <<EOF
 OK - Keep setup complete.
 
 Next:
-  1. Restart Cursor so MCP config changes load.
-  2. Open a project clone in Cursor.
+  1. Restart Cursor and/or Claude Code so MCP config changes load.
+  2. Open a project clone in your editor or run 'claude' from a project directory.
   3. Run: scripts/init-project.sh --name <project-name>
 EOF

@@ -22,7 +22,12 @@ Each step writes a file. Intake produces a dossier. Watch reads the dossier and 
 
 ## Try it for 30 minutes
 
-Start with [docs/tutorial/first-pass-tccd.md](docs/tutorial/first-pass-tccd.md). It walks one full lap against `tccd` (on every Mac, real surface, not exploitable through anything in the tutorial). After that the rest of the doc tree is navigable.
+Two tutorials, pick one:
+
+- [docs/tutorial/first-pass-tccd.md](docs/tutorial/first-pass-tccd.md) — one full lap against `tccd` (on every Mac, real surface, not exploitable through anything in the tutorial).
+- [docs/tutorial/first-pass-planted.md](docs/tutorial/first-pass-planted.md) — a purpose-built XPC daemon with three planted bugs. Demonstrates triage selectivity: find three candidates, close the red herring, escalate the real ones.
+
+After either tutorial the rest of the doc tree is navigable.
 
 ## Going hunting
 
@@ -102,34 +107,27 @@ What it does:
 3. Verifies non-interactive SSH.
 4. Installs Ghidra, Java, `ghidra-mcp`, and the station's Ghidra scripts on the lab host.
 5. Deploys `macre-vm-mcp` on the lab host.
-6. Writes `~/.cursor/mcp.json` (or updates it) with `ghidra-mcp` and `macre-vm-mcp` entries.
+6. Writes MCP config for Cursor (`~/.cursor/mcp.json`) and Claude Code (`~/.claude/settings.json`).
 7. Runs structural station checks.
 
 Restart your agent client after the installer finishes.
 
 ### Cursor vs Claude Code
 
-The installer writes Cursor's MCP config by default. For Claude Code the same servers register through `~/.claude/settings.json`:
+The installer writes config for both by default. Use `--cursor-only` or `--claude-code-only` if you only want one.
 
-```json
-{
-  "mcpServers": {
-    "ghidra-mcp": {
-      "command": "ssh",
-      "args": ["-o", "BatchMode=yes", "-o", "ServerAliveInterval=30",
-               "<lab-host>", "/Users/<remote-user>/bin/ghidra-mcp-launch"]
-    },
-    "macre-vm-mcp": {
-      "command": "ssh",
-      "args": ["-o", "BatchMode=yes", "-o", "ServerAliveInterval=30",
-               "<lab-host>", "/Users/<remote-user>/.venvs/macre-vm-mcp/bin/python",
-               "-m", "macre_vm_mcp"]
-    }
-  }
-}
+| | Cursor | Claude Code |
+|---|--------|-------------|
+| MCP config | `~/.cursor/mcp.json` | `~/.claude/settings.json` |
+| Skills | `~/.cursor/skills/` | `~/.claude/skills/` |
+| Linker script | `cursor/skill-link.sh` | `scripts/skill-link-claude-code.sh` |
+| Config writer | `scripts/configure-cursor-mcp.py` | `scripts/configure-claude-code-mcp.py` |
+
+To preview Claude Code MCP config without writing:
+
+```bash
+python3 scripts/configure-claude-code-mcp.py --host <lab-host> --remote-home /Users/<remote-user> --dry-run
 ```
-
-Skills are read from `~/.claude/skills/`. Symlink `Skills/*` into that directory or copy them.
 
 ### Rerun safety
 
@@ -137,6 +135,7 @@ The setup scripts are idempotent. Rerunning `setup-keep.sh` for a new lab host u
 
 ```bash
 python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user> --dry-run
+python3 scripts/configure-claude-code-mcp.py --host <lab-host> --remote-home /Users/<remote-user> --dry-run
 ```
 
 ### Installer options
@@ -148,12 +147,15 @@ scripts/setup-keep.sh --help
 Common combinations:
 
 ```bash
-# Local skills + MCP JSON only; skip remote installs.
+# Local skills + MCP config only; skip remote installs.
 scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> \
   --skip-ssh-key --skip-ghidra --skip-dynamic
 
 # Remote tooling but don't touch agent MCP config.
 scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --skip-mcp-config
+
+# Claude Code only (skip Cursor config).
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> --claude-code-only
 
 # Different Python on the lab host.
 scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<remote-user> \
@@ -177,10 +179,11 @@ Host <lab-host>
   ServerAliveInterval 30
 ```
 
-2. Link skills (Cursor):
+2. Link skills:
 
 ```bash
-./cursor/skill-link.sh
+./cursor/skill-link.sh                # Cursor
+./scripts/skill-link-claude-code.sh   # Claude Code
 ```
 
 3. SSH key access:
@@ -208,10 +211,11 @@ MACRE_REMOTE_PYTHON="/opt/homebrew/bin/python3" \
 bash scripts/deploy-macre-vm-mcp.sh
 ```
 
-6. Write Cursor MCP config:
+6. Write MCP config:
 
 ```bash
 python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
+python3 scripts/configure-claude-code-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
 ```
 
 7. Restart the agent.
@@ -298,8 +302,13 @@ Every candidate ends as one of these. There is no `interesting`.
 ### Agent doesn't show MCP tools
 
 ```bash
+# Cursor:
 python3 -m json.tool ~/.cursor/mcp.json >/dev/null
 python3 scripts/configure-cursor-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
+
+# Claude Code:
+python3 -m json.tool ~/.claude/settings.json >/dev/null
+python3 scripts/configure-claude-code-mcp.py --host <lab-host> --remote-home /Users/<remote-user>
 ```
 
 Restart the agent. Verify the remote commands work:

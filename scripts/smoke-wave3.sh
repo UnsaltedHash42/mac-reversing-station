@@ -114,10 +114,11 @@ fi
 section "Setup scripts"
 if bash scripts/setup-keep.sh --help >/dev/null && \
    bash scripts/init-project.sh --help >/dev/null && \
-   python3 scripts/configure-cursor-mcp.py --host lab-host --remote-home /Users/remote --dry-run >/dev/null; then
-    ok "setup scripts expose help and MCP config dry-run"
+   python3 scripts/configure-cursor-mcp.py --host lab-host --remote-home /Users/remote --dry-run >/dev/null && \
+   python3 scripts/configure-claude-code-mcp.py --host lab-host --remote-home /Users/remote --dry-run >/dev/null; then
+    ok "setup scripts expose help and MCP config dry-run (Cursor + Claude Code)"
 else
-    fail "setup script smoke failed" "check scripts/setup-keep.sh, scripts/init-project.sh, and scripts/configure-cursor-mcp.py"
+    fail "setup script smoke failed" "check scripts/setup-keep.sh, scripts/init-project.sh, configure-cursor-mcp.py, and configure-claude-code-mcp.py"
 fi
 
 section "Findings template"
