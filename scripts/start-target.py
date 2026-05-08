@@ -730,6 +730,22 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
         family_row,
         row_key=f"| {inventory['target']['id']} | {', '.join(inventory['classification']['family_labels'])} |",
     )
+    os_topology_row = os_topology_row_for(inventory)
+    if os_topology_row:
+        text = ensure_table_row(
+            text,
+            "## OS Component Topology",
+            os_topology_row,
+            row_key=f"| {inventory['target']['id']} |",
+        )
+    apple_source_row = apple_source_map_row(inventory)
+    if apple_source_row:
+        text = ensure_table_row(
+            text,
+            "## Apple Source Map",
+            apple_source_row,
+            row_key=f"| {inventory['target']['id']} |",
+        )
     text = ensure_table_row(text, "## Scriptorium Anchors", scriptorium_row, row_key=f"| {scriptorium_anchor_id(inventory)} |")
     text = ensure_table_row(
         text,
@@ -738,6 +754,60 @@ def update_corpus(corpus_path: Path, inventory: dict[str, Any]) -> None:
         row_key=f"| {inventory['pass_id']} | Watch review for {inventory['target']['name']} |",
     )
     corpus_path.write_text(text, encoding="utf-8")
+
+
+def os_topology_row_for(inventory: dict[str, Any]) -> str:
+    surfaces = set(inventory["classification"]["surfaces"])
+    if "os-component" not in surfaces:
+        return ""
+    target = inventory["target"]
+    os_component = inventory.get("os_component", {})
+    authority = os_component.get("authority") or "unknown"
+    if os_component.get("team_id"):
+        authority = f"{authority} ({os_component['team_id']})"
+    mach_services = ", ".join(os_component.get("mach_services", [])[:5]) or "none captured"
+    private_deps = os_component.get("private_framework_deps", [])
+    if private_deps:
+        framework_summary = f"{len(private_deps)} private (e.g. {Path(private_deps[0]).name})"
+    elif os_component.get("all_dyld_deps"):
+        framework_summary = f"{len(os_component['all_dyld_deps'])} total"
+    else:
+        framework_summary = "n/a (otool not run)"
+    maturity = inventory["decision_support"].get("maturity_summary", "")
+    os_build = os_component.get("os_build") or "intake-only"
+    return (
+        f"| {target['id']} | {target['kind']} | {authority} | {os_build} | "
+        f"{mach_services} | {framework_summary} | {maturity} |"
+    )
+
+
+def apple_source_map_row(inventory: dict[str, Any]) -> str:
+    source = inventory["source_correlation"]
+    if source["status"] == "not-provided":
+        return ""
+    bundle_identifier = inventory.get("bundle", {}).get("identifier", "")
+    source_url = source.get("source_url", "") or ""
+    is_apple = bundle_identifier.startswith("com.apple.") or "opensource.apple.com" in source_url
+    if not is_apple:
+        return ""
+    component = bundle_identifier or "unknown"
+    if "opensource.apple.com" in source_url:
+        component = apple_component_from_url(source_url) or component
+    release = source.get("source_ref") or "unknown"
+    cache_path = source.get("source_root") or "n/a"
+    confidence = source.get("confidence", "unverified")
+    notes = source.get("source_url") or "no URL provided"
+    return (
+        f"| {inventory['target']['id']} | {component} | {release} | {cache_path} | "
+        f"{confidence} | {notes} |"
+    )
+
+
+def apple_component_from_url(url: str) -> str:
+    match = re.search(r"opensource\.apple\.com/.*?/([^/]+?)(?:-[^/]+)?(?:/|\.tar\.gz|$)", url)
+    if match:
+        return match.group(1)
+    return ""
 
 
 def corpus_pass_row(inventory: dict[str, Any]) -> str:

@@ -519,6 +519,95 @@ class TestStartTarget(unittest.TestCase):
         gaps = start_target_module.maturity_coverage_gaps(maturity)
         self.assertTrue(any("frobnicator" in gap for gap in gaps))
 
+    def test_os_topology_row_populated_for_os_component_target(self) -> None:
+        binary = self.tmp / "examplesd"
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | 0o111)
+
+        proc = self.run_script(str(binary), "--pass-id", "PASS-200")
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        # The OS Component Topology row leads with the target id.
+        topology_section = corpus.split("## OS Component Topology", 1)[1].split("##", 1)[0]
+        self.assertIn("| examplesd | daemon |", topology_section)
+
+        # Ordinary (non-OS-component) targets do not pollute the OS Topology table.
+        plain = self.tmp / "tool"
+        plain.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        plain.chmod(plain.stat().st_mode | 0o111)
+        proc2 = self.run_script(str(plain), "--pass-id", "PASS-201")
+        self.assertEqual(proc2.returncode, 0, msg=proc2.stdout + proc2.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        topology_section = corpus.split("## OS Component Topology", 1)[1].split("##", 1)[0]
+        self.assertNotIn("| tool |", topology_section)
+
+        # Re-intake updates the existing row in place; no duplicate.
+        proc3 = self.run_script(str(binary), "--pass-id", "PASS-200")
+        self.assertEqual(proc3.returncode, 0, msg=proc3.stdout + proc3.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        topology_section = corpus.split("## OS Component Topology", 1)[1].split("##", 1)[0]
+        self.assertEqual(topology_section.count("| examplesd | daemon |"), 1)
+
+    def test_apple_source_map_row_only_when_apple_source_metadata_provided(self) -> None:
+        app = self.tmp / "AppleishApp.app"
+        contents = app / "Contents"
+        macos = contents / "MacOS"
+        macos.mkdir(parents=True)
+        with (contents / "Info.plist").open("wb") as fh:
+            dump(
+                {
+                    "CFBundleIdentifier": "com.apple.example",
+                    "CFBundleExecutable": "AppleishApp",
+                },
+                fh,
+            )
+        executable = macos / "AppleishApp"
+        executable.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        executable.chmod(executable.stat().st_mode | 0o111)
+
+        source_root = self.tmp / "apple-source-cache/dyld-1042.1"
+        source_root.mkdir(parents=True)
+
+        proc = self.run_script(
+            str(app),
+            "--pass-id",
+            "PASS-202",
+            "--source-root",
+            str(source_root),
+            "--source-ref",
+            "1042.1",
+            "--source-url",
+            "https://opensource.apple.com/source/dyld/dyld-1042.1.tar.gz",
+        )
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stdout + proc.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        apple_section = corpus.split("## Apple Source Map", 1)[1].split("##", 1)[0]
+        self.assertIn("| appleishapp |", apple_section)
+        self.assertIn("dyld", apple_section)
+        self.assertIn("1042.1", apple_section)
+
+        # A non-Apple target with source metadata does NOT populate the Apple Source Map table.
+        binary = self.tmp / "thirdparty-tool"
+        binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        binary.chmod(binary.stat().st_mode | 0o111)
+        proc2 = self.run_script(
+            str(binary),
+            "--pass-id",
+            "PASS-203",
+            "--source-root",
+            str(source_root),
+            "--source-ref",
+            "v1.0",
+            "--source-url",
+            "https://example.invalid/repo",
+        )
+        self.assertEqual(proc2.returncode, 0, msg=proc2.stdout + proc2.stderr)
+        corpus = (self.project / "CORPUS.md").read_text(encoding="utf-8")
+        apple_section = corpus.split("## Apple Source Map", 1)[1].split("##", 1)[0]
+        self.assertNotIn("thirdparty-tool", apple_section)
+
 
 class TestStartTargetHelpers(unittest.TestCase):
     """Pure-function tests for U1 helpers (parsing logic, no subprocess required)."""
