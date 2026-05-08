@@ -1,8 +1,16 @@
 # Ghidra script: scan one loaded program for Endpoint Security client surface.
 #
-# Tier A (callsite-verified):
-#   es_client_callsite          callers of es_new_client / es_subscribe /
-#                               es_respond_auth_result / es_delete_client
+# Tier A (decompiler-recovered callsite + literal arg):
+#   es_new_client_callsite          callsite (handler block at arg 1; record site)
+#   es_subscribe_callsite           events count (arg 2, size_t)
+#   es_unsubscribe_callsite         events count (arg 2)
+#   es_respond_auth_callsite        decision constant (arg 2, ES_AUTH_RESULT)
+#   es_mute_path_callsite           path being muted (arg 1, char*)
+#   es_unmute_path_callsite         path being unmuted (arg 1)
+#
+# The mute_path / unmute_path arg recovery is the high-leverage one:
+# whether an EDR is muting `/tmp/known_attacker_path` versus
+# `/private/var/db/com.vendor.legitimate` shows up here directly.
 #
 # Tier B (function-name match):
 #   es_handler_impl             functions named *handler / *callback / *event
@@ -18,33 +26,29 @@
 # @category Mach-O.EndpointSecurity
 # @runtime Jython
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-ES_APIS = (
-    "es_new_client",
-    "es_delete_client",
-    "es_subscribe",
-    "es_unsubscribe",
-    "es_respond_auth_result",
-    "es_respond_flags_result",
-    "es_mute_path",
-)
-
-
-def add_es_callsites(writer):
-    for api in ES_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "es_client_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("es_new_client", arg_index=0, recover_kind="none",
+            anchor_kind="es_new_client_callsite"),
+    APISpec("es_delete_client", arg_index=0, recover_kind="none",
+            anchor_kind="es_delete_client_callsite"),
+    APISpec("es_subscribe", arg_index=2, recover_kind="const",
+            anchor_kind="es_subscribe_callsite", evidence_label="event_count"),
+    APISpec("es_unsubscribe", arg_index=2, recover_kind="const",
+            anchor_kind="es_unsubscribe_callsite", evidence_label="event_count"),
+    APISpec("es_respond_auth_result", arg_index=2, recover_kind="const",
+            anchor_kind="es_respond_auth_callsite", evidence_label="decision"),
+    APISpec("es_respond_flags_result", arg_index=2, recover_kind="const",
+            anchor_kind="es_respond_flags_callsite", evidence_label="decision"),
+    APISpec("es_mute_path", arg_index=1, recover_kind="string",
+            anchor_kind="es_mute_path_callsite", evidence_label="path"),
+    APISpec("es_unmute_path", arg_index=1, recover_kind="string",
+            anchor_kind="es_unmute_path_callsite", evidence_label="path"),
+    APISpec("es_mute_process", arg_index=1, recover_kind="none",
+            anchor_kind="es_mute_process_callsite"),
+]
 
 
 run_string_scan(
@@ -72,5 +76,5 @@ run_string_scan(
                    r"(policy|verdict|decision|authorize|quarantine).{0,30}(handler|callback|impl)",
                    max_anchors=12, evidence_label="function"),
     ],
-    enrich=add_es_callsites,
+    api_specs=API_SPECS,
 )

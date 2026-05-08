@@ -1,45 +1,47 @@
 # Ghidra script: identify code-signing-flag and AMFI references that may
 # correspond to "flags == 0" gating decisions.
 #
-# Tier A (callsite-verified):
-#   csops_callsite              callers of csops / csops_audittoken
+# Tier A (decompiler-recovered callsite + literal arg):
+#   csops_callsite                operation constant (arg 1, CS_OPS_*)
+#   csops_audittoken_callsite     operation constant (arg 0)
+#   sec_static_code_callsite      callsite address (arg is dict; record path)
+#   sec_code_check_validity       flags arg (const)
+#
+# Recovering the csops *operation* tells the agent whether the call
+# is asking for CS_OPS_STATUS, CS_OPS_ENTITLEMENTS_BLOB, etc., which
+# determines whether a returned-zero flags decision is meaningful.
 #
 # Tier B (function-name match):
-#   code_sign_check_impl        functions named *codesign* / *SecCode* /
-#                               *CodeDirectory*
-#   flag_check_impl             functions named *flag* / *CS_VALID* /
-#                               *CS_PLATFORM_BINARY*
+#   code_sign_check_impl    functions named *codesign* / *SecCode* /
+#                           *CodeDirectory*
+#   flag_check_impl         functions named *flag* / *CS_VALID* /
+#                           *CS_PLATFORM_BINARY*
 #
 # Tier C (string heuristic):
-#   code_sign_string            codesign / SecCode / CodeDirectory / csops / CS_OPS
-#   flags_string                flag / CS_VALID / CS_RUNTIME / CS_PLATFORM_BINARY
-#   amfi_string                 AMFI / AppleMobileFileIntegrity / MISValidate
+#   code_sign_string        codesign / SecCode / CodeDirectory / csops / CS_OPS
+#   flags_string            flag / CS_VALID / CS_RUNTIME / CS_PLATFORM_BINARY
+#   amfi_string             AMFI / AppleMobileFileIntegrity / MISValidate
 #
 # @category Mach-O.CodeSigning
 # @runtime Jython
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-CSOPS_APIS = (
-    "csops",
-    "csops_audittoken",
-)
-
-
-def add_csops_callsites(writer):
-    for api in CSOPS_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "csops_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("csops", arg_index=1, recover_kind="const",
+            anchor_kind="csops_callsite", evidence_label="ops"),
+    APISpec("csops_audittoken", arg_index=1, recover_kind="const",
+            anchor_kind="csops_audittoken_callsite", evidence_label="ops"),
+    APISpec("SecStaticCodeCheckValidity", arg_index=1, recover_kind="const",
+            anchor_kind="sec_static_code_check_callsite", evidence_label="flags"),
+    APISpec("SecStaticCodeCheckValidityWithErrors", arg_index=1, recover_kind="const",
+            anchor_kind="sec_static_code_check_callsite", evidence_label="flags"),
+    APISpec("SecCodeCheckValidity", arg_index=1, recover_kind="const",
+            anchor_kind="sec_code_check_callsite", evidence_label="flags"),
+    APISpec("SecCodeCopyStaticCode", arg_index=1, recover_kind="const",
+            anchor_kind="sec_code_copy_static_callsite", evidence_label="flags"),
+]
 
 
 run_string_scan(
@@ -63,5 +65,5 @@ run_string_scan(
                    r"(CS_VALID|CS_PLATFORM_BINARY|cs_flags|csflags)",
                    max_anchors=12, evidence_label="function"),
     ],
-    enrich=add_csops_callsites,
+    api_specs=API_SPECS,
 )

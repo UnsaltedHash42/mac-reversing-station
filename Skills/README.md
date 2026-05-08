@@ -56,13 +56,17 @@ Pick one based on intake. Multi-label is fine; `unknown/mixed` is fine when noth
 
 ## Hunts — one bug class each
 
-Open one when the family points at it. A hunt names the static evidence, the dynamic confirmation, and the closure rule.
+Open one when the family points at it. A hunt names the static evidence, the dynamic confirmation, and the closure rule. Each hunt pairs with one or two scan scripts under `ghidra-scripts/`.
 
-| Skill | Bug class |
-|---|---|
-| [hunt-wrong-door](offensive-macos-hunt-wrong-door/SKILL.md) | XPC clients trusted by daemons that should validate them |
-| [hunt-defaults-bypass](offensive-macos-hunt-defaults-bypass/SKILL.md) | Security checks gated on user-writable `defaults` keys |
-| [hunt-catalyst-porting-gap](offensive-macos-hunt-catalyst-porting-gap/SKILL.md) | iOS-style entitlement assumptions that did not survive the macOS port |
+| Skill | Bug class | Paired scan |
+|---|---|---|
+| [hunt-wrong-door](offensive-macos-hunt-wrong-door/SKILL.md) | XPC clients trusted by daemons that should validate them | `scan_wrong_door`, `dump_xpc_listeners` |
+| [hunt-defaults-bypass](offensive-macos-hunt-defaults-bypass/SKILL.md) | Security checks gated on user-writable `defaults` keys | `scan_defaults_bypass` |
+| [hunt-catalyst-porting-gap](offensive-macos-hunt-catalyst-porting-gap/SKILL.md) | iOS-style entitlement assumptions that did not survive the macOS port | `scan_catalyst_porting_gap` |
+| [hunt-tcc-prompt-attribution](offensive-macos-hunt-tcc-prompt-attribution/SKILL.md) | TCC prompts naming the wrong responsible app; pid-only attribution | `scan_tcc_prompt_surface` |
+| [hunt-iokit-userclient](offensive-macos-hunt-iokit-userclient/SKILL.md) | IOKit user-client selector / scalar / struct validation | `scan_iokit_user_clients` |
+| [hunt-private-framework-hijack](offensive-macos-hunt-private-framework-hijack/SKILL.md) | Attacker-influenced `dlopen` / `NSClassFromString` paths | `scan_private_framework_dependency` |
+| [hunt-url-scheme-hijack](offensive-macos-hunt-url-scheme-hijack/SKILL.md) | Custom URL scheme handlers trusting URL parameters / squatting via LaunchServices | `scan_url_scheme_handlers` |
 
 ## Orchestrators — the loop glue
 

@@ -72,18 +72,33 @@ Weak anchors:
    ghidra.script(session_id="<session>", path="/Users/<remote-user>/ghidra-scripts/scan_defaults_bypass.py", script_args=[])
    ```
 
-3. Save TSV:
+3. Save TSV. The unified tiered-anchor contract emits:
 
    ```text
-   target	type	domains	keys	bypass_strings	confidence	evidence
-   /path/to/agent	launchagent-or-user-context	2	5	9	high	defaults_api=...
+   target  tier  anchor_kind                       name                   address      evidence
+   /path/to/agent  A  cfprefs_copyappvalue_callsite  _check_internal_mode   0x100008abc  api=CFPreferencesCopyAppValue; site=0x100008abc; key=disable-validation
+   /path/to/agent  A  cfprefs_getbool_callsite       _maybe_skip_check      0x10000a020  api=CFPreferencesGetAppBooleanValue; site=...; key=internal.allow-test-build
+   /path/to/agent  B  bypass_gate_impl               _disable_amfi_check    0x10000ce00  function=_disable_amfi_check
+   /path/to/agent  C  defaults_key_candidate         debug-skip-validation  -            key=debug-skip-validation
    ```
 
-4. Rank:
+   The literal **key** recovered by `CFPreferencesCopyAppValue` (et al.)
+   is the high-leverage signal. Each tier-A row points you at exactly
+   one decompiled function reading exactly one defaults key -- look at
+   that function and the gate is right there.
 
-   - Tier 1: LaunchAgent/user-context + high confidence + explicit security bypass strings.
-   - Tier 2: LaunchDaemon/system-context + high confidence, or LaunchAgent + medium confidence.
-   - Tier 3: generic debug strings, root-only, or internal-build gated.
+4. Rank by tier-imbalance:
+
+   - **Strong**: tier-A `cfprefs_*_callsite` with key=<security-shaped name>
+     in a LaunchAgent / user-context binary. The recovered key tells
+     you what to `defaults write` to flip the gate. This is a candidate.
+   - **Medium**: tier-A callsite with key=<generic flag name> + tier-B
+     `bypass_gate_impl` function nearby in the call graph. The flag
+     might be reachable but not security-relevant; check the gate it
+     guards.
+   - **Weak**: tier-C `defaults_key_candidate` rows with no matching
+     tier-A callsite. The string exists but is not necessarily read.
+     Promote only after Ghidra navigation finds the actual read.
 
 ## Behavioral Confirmation
 

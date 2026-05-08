@@ -1,8 +1,16 @@
 # Ghidra script: scan one loaded program for TCC prompt-attribution / privacy surface.
 #
-# Tier A (callsite-verified):
-#   tcc_callsite                callers of TCCAccessRequest / TCCAccessPreflight /
-#                               SecTaskCopyValueForEntitlement
+# Tier A (decompiler-recovered callsite + literal arg):
+#   tccaccessrequest_callsite          kTCCService string (arg 0)
+#   tccaccesspreflight_callsite        kTCCService string (arg 0)
+#   sectaskcopyentitlement_callsite    entitlement key (arg 1)
+#   sectaskcopyident_callsite          callsite address (no string arg)
+#
+# The wrong-prompt-attribution bug class is: a daemon mediates a TCC
+# prompt for a *different* requesting subject than the one whose UI
+# the user sees, so consent is laundered through the wrong identity.
+# The literal kTCCService recovered here tells the agent which service
+# the daemon is gating, which is half of the attribution question.
 #
 # Tier B (function-name match):
 #   prompt_handler              functions named *prompt* / *consent* / *permission*
@@ -19,31 +27,21 @@
 # @category Mach-O.TCC
 # @runtime Jython
 
-from _re_lib import (
-    StringRule, format_addr, callers_of, find_external, run_string_scan,
-)
+from _re_lib import APISpec, StringRule, run_string_scan
 
 
-TCC_APIS = (
-    "TCCAccessRequest",
-    "TCCAccessPreflight",
-    "TCCAccessRequestForSelf",
-    "SecTaskCopyValueForEntitlement",
-    "SecTaskCopySigningIdentifier",
-)
-
-
-def add_tcc_callsites(writer):
-    for api in TCC_APIS:
-        fn = find_external(api)
-        if fn is None:
-            continue
-        for caller, site in callers_of(fn):
-            if caller is None:
-                continue
-            writer.add("A", "tcc_callsite", caller.getName(),
-                       format_addr(site),
-                       "api=%s; site=%s" % (api, format_addr(site)))
+API_SPECS = [
+    APISpec("TCCAccessRequest", arg_index=0, recover_kind="string",
+            anchor_kind="tccaccessrequest_callsite", evidence_label="service"),
+    APISpec("TCCAccessPreflight", arg_index=0, recover_kind="string",
+            anchor_kind="tccaccesspreflight_callsite", evidence_label="service"),
+    APISpec("TCCAccessRequestForSelf", arg_index=0, recover_kind="string",
+            anchor_kind="tccaccessrequestforself_callsite", evidence_label="service"),
+    APISpec("SecTaskCopyValueForEntitlement", arg_index=1, recover_kind="string",
+            anchor_kind="sectaskcopyentitlement_callsite", evidence_label="entitlement"),
+    APISpec("SecTaskCopySigningIdentifier", arg_index=0, recover_kind="none",
+            anchor_kind="sectaskcopyident_callsite"),
+]
 
 
 run_string_scan(
@@ -70,5 +68,5 @@ run_string_scan(
                    r"(bundleIdentifier|executablePath|target_identifier|responsible|effectiveUserIdentifier)",
                    max_anchors=16, evidence_label="function"),
     ],
-    enrich=add_tcc_callsites,
+    api_specs=API_SPECS,
 )

@@ -279,6 +279,368 @@ def callers_of(function):
 
 
 # --------------------------------------------------------------------------
+# Decompiler-driven argument recovery
+# --------------------------------------------------------------------------
+#
+# Recovering literal arguments (strings, constants, symbol refs) at each
+# callsite is what lifts a tier-A row from "there is a call" to "there
+# is a call passing this exact value." The agent can then triage by
+# arg, e.g. "which AuthorizationCopyRights calls request com.apple.SUFP".
+#
+# The Ghidra imports for decompilation are heavy, so they are loaded
+# lazily by DecompCache.open(). Scripts that never enrich pay nothing.
+
+class DecompCache(object):
+    """Lazy wrapper around Ghidra's DecompInterface.
+
+    Use as:
+
+        cache = DecompCache()
+        try:
+            value = recover_call_string_arg(cache.open(), callsite, idx)
+        finally:
+            cache.dispose()
+
+    `open()` returns None if `fast_mode=True` was passed at construction
+    time. Scripts that opt out of the decompiler share the same callsite
+    interface via the fast-path fallback.
+    """
+
+    __slots__ = ("_iface", "_fast", "_disposed")
+
+    def __init__(self, fast_mode=False):
+        self._iface = None
+        self._fast = bool(fast_mode)
+        self._disposed = False
+
+    @property
+    def fast(self):
+        return self._fast
+
+    def open(self):
+        if self._fast or self._disposed:
+            return None
+        if self._iface is not None:
+            return self._iface
+        try:
+            from ghidra.app.decompiler import DecompInterface, DecompileOptions
+        except Exception:
+            return None
+        iface = DecompInterface()
+        try:
+            iface.setOptions(DecompileOptions())
+            iface.openProgram(currentProgram)
+        except Exception:
+            return None
+        self._iface = iface
+        return iface
+
+    def dispose(self):
+        if self._iface is not None and not self._disposed:
+            try:
+                self._iface.dispose()
+            except Exception:
+                pass
+        self._disposed = True
+
+
+DECOMPILE_TIMEOUT_SEC = 30
+
+
+def recover_string_at(address):
+    """Return the C string at ``address``, or None.
+
+    Tries Ghidra-defined data first, then falls back to a raw byte
+    read up to 512 chars or the first NUL.
+    """
+    if address is None:
+        return None
+    try:
+        data = getDataAt(address)
+    except Exception:
+        data = None
+    if data is not None:
+        try:
+            val = data.getValue()
+            if isinstance(val, str):
+                return val
+            if val is not None:
+                s = str(val)
+                if s:
+                    return s
+        except Exception:
+            pass
+    try:
+        mem = currentProgram.getMemory()
+        out = bytearray()
+        addr = address
+        for _ in range(512):
+            b = mem.getByte(addr) & 0xFF
+            if b == 0:
+                break
+            out.append(b)
+            addr = addr.add(1)
+        if out:
+            return bytes(out).decode("utf-8", errors="replace")
+    except Exception:
+        return None
+    return None
+
+
+def _pcode_inputs_at(decomp_iface, callsite_addr):
+    """Yield Varnode inputs of the call pcode op at ``callsite_addr``.
+
+    Yields nothing if decompilation fails or the address is not a call.
+    """
+    if decomp_iface is None:
+        return
+    try:
+        from ghidra.program.model.pcode import PcodeOp
+        from ghidra.util.task import ConsoleTaskMonitor
+    except Exception:
+        return
+    fm = currentProgram.getFunctionManager()
+    try:
+        containing = fm.getFunctionContaining(callsite_addr)
+    except Exception:
+        containing = None
+    if containing is None:
+        return
+    try:
+        res = decomp_iface.decompileFunction(containing, DECOMPILE_TIMEOUT_SEC,
+                                             ConsoleTaskMonitor())
+    except Exception:
+        return
+    if res is None or not res.decompileCompleted():
+        return
+    high = res.getHighFunction()
+    if high is None:
+        return
+    try:
+        op_iter = high.getPcodeOps(callsite_addr)
+    except Exception:
+        return
+    while op_iter.hasNext():
+        op = op_iter.next()
+        try:
+            opcode = op.getOpcode()
+        except Exception:
+            continue
+        if opcode not in (PcodeOp.CALL, PcodeOp.CALLIND):
+            continue
+        for i in range(op.getNumInputs()):
+            yield op.getInput(i)
+
+
+def recover_call_string_arg(decomp_iface, callsite_addr, arg_index):
+    """Recover the literal string at ``arg_index`` of the call at ``callsite_addr``.
+
+    arg_index is 0-based across function arguments (input 0 in pcode is
+    the call target, so arg N maps to pcode input N+1).
+    """
+    target_idx = arg_index + 1
+    inputs = list(_pcode_inputs_at(decomp_iface, callsite_addr))
+    if len(inputs) <= target_idx:
+        return None
+    vn = inputs[target_idx]
+    if vn is None:
+        return None
+    return _resolve_varnode_to_string(vn)
+
+
+def recover_call_const_arg(decomp_iface, callsite_addr, arg_index):
+    """Recover the integer constant at ``arg_index`` of the call.
+
+    Returns an int or None.
+    """
+    target_idx = arg_index + 1
+    inputs = list(_pcode_inputs_at(decomp_iface, callsite_addr))
+    if len(inputs) <= target_idx:
+        return None
+    vn = inputs[target_idx]
+    if vn is None:
+        return None
+    return _resolve_varnode_to_int(vn)
+
+
+def _resolve_varnode_to_string(vn):
+    """Resolve a Varnode to a C string at the constant address it carries."""
+    try:
+        from ghidra.program.model.pcode import PcodeOp
+    except Exception:
+        return None
+    addr_space = currentProgram.getAddressFactory().getDefaultAddressSpace()
+
+    def addr_from(value):
+        try:
+            return addr_space.getAddress(value)
+        except Exception:
+            return None
+
+    if vn.isConstant() or vn.isAddress():
+        s = recover_string_at(addr_from(vn.getOffset()))
+        if s:
+            return s
+    defn = vn.getDef()
+    if defn is None:
+        return None
+    if defn.getOpcode() in (PcodeOp.COPY, PcodeOp.CAST, PcodeOp.PTRSUB):
+        for i in range(defn.getNumInputs()):
+            src = defn.getInput(i)
+            if src is None:
+                continue
+            if src.isConstant() or src.isAddress():
+                s = recover_string_at(addr_from(src.getOffset()))
+                if s:
+                    return s
+    return None
+
+
+def _resolve_varnode_to_int(vn):
+    if vn is None:
+        return None
+    try:
+        from ghidra.program.model.pcode import PcodeOp
+    except Exception:
+        return None
+    if vn.isConstant():
+        try:
+            return int(vn.getOffset())
+        except Exception:
+            return None
+    defn = vn.getDef()
+    if defn is None:
+        return None
+    if defn.getOpcode() in (PcodeOp.COPY, PcodeOp.CAST):
+        src = defn.getInput(0)
+        if src is not None and src.isConstant():
+            try:
+                return int(src.getOffset())
+            except Exception:
+                return None
+    return None
+
+
+def recover_call_arg_fast(callsite_addr, arg_index=0):
+    """Best-effort fallback: scan back ~12 instructions for a data ref.
+
+    Used when the decompiler is disabled or fails. ``arg_index`` is
+    advisory; the fast path picks the *first* string-shaped data ref
+    it sees and returns it. Calls with multiple string operands will
+    pick the wrong arg under FAST_MODE -- accepted tradeoff.
+    """
+    try:
+        listing = currentProgram.getListing()
+        instr = listing.getInstructionAt(callsite_addr)
+    except Exception:
+        return None
+    if instr is None:
+        return None
+    cur = instr
+    for _ in range(12):
+        cur = cur.getPrevious()
+        if cur is None:
+            break
+        try:
+            refs = cur.getReferencesFrom()
+        except Exception:
+            continue
+        for ref in refs:
+            try:
+                if not ref.getReferenceType().isData():
+                    continue
+                s = recover_string_at(ref.getToAddress())
+            except Exception:
+                continue
+            if s and len(s) >= 3:
+                return s
+    return None
+
+
+# --------------------------------------------------------------------------
+# Declarative API enrichment
+# --------------------------------------------------------------------------
+
+class APISpec(object):
+    """Declarative spec for one API to enrich at every callsite.
+
+    name             C symbol (matched with and without leading underscore)
+    arg_index        0-based; the arg whose value we want
+    recover_kind     "string" (resolve to C string) or
+                     "const" (resolve to int constant) or
+                     "none" (record callsite without arg recovery)
+    anchor_kind      tier-A anchor_kind for matching rows
+    evidence_label   key= label for the recovered value in the evidence column
+    """
+
+    __slots__ = ("name", "arg_index", "recover_kind", "anchor_kind", "evidence_label")
+
+    def __init__(self, name, arg_index=0, recover_kind="none",
+                 anchor_kind=None, evidence_label=None):
+        if recover_kind not in ("string", "const", "none"):
+            raise ValueError("recover_kind must be string|const|none")
+        self.name = name
+        self.arg_index = int(arg_index)
+        self.recover_kind = recover_kind
+        self.anchor_kind = anchor_kind or "%s_callsite" % name
+        self.evidence_label = evidence_label or recover_kind
+
+
+def enrich_callsite_args(writer, api_specs, decomp_cache=None,
+                         max_per_api=64):
+    """For each API spec, walk callers and emit one tier-A row per callsite.
+
+    The tier-A row's `name` is the calling function. The `address` is
+    the callsite. The `evidence` column carries `api=<name>; site=<addr>`
+    plus, when recovery succeeds, `<evidence_label>=<recovered>`.
+
+    Recovery uses the decompiler if `decomp_cache` is provided and not
+    in fast mode; otherwise falls back to the instruction-walk path.
+
+    Returns a dict of {api_name: callsite_count} for stderr summary.
+    """
+    own_cache = decomp_cache is None
+    if own_cache:
+        decomp_cache = DecompCache()
+    try:
+        decomp_iface = decomp_cache.open()
+        counts = {}
+        for spec in api_specs:
+            fn = find_external(spec.name)
+            if fn is None:
+                counts[spec.name] = 0
+                continue
+            count = 0
+            for caller, site in callers_of(fn):
+                if count >= max_per_api:
+                    writer.warn("max_per_api_hit=%s" % spec.name)
+                    break
+                if caller is None:
+                    continue
+                evidence = "api=%s; site=%s" % (spec.name, format_addr(site))
+                if spec.recover_kind == "string":
+                    val = None
+                    if decomp_iface is not None:
+                        val = recover_call_string_arg(decomp_iface, site, spec.arg_index)
+                    if val is None:
+                        val = recover_call_arg_fast(site, spec.arg_index)
+                    if val:
+                        evidence += "; %s=%s" % (spec.evidence_label, safe_field(val)[:160])
+                elif spec.recover_kind == "const" and decomp_iface is not None:
+                    val = recover_call_const_arg(decomp_iface, site, spec.arg_index)
+                    if val is not None:
+                        evidence += "; %s=0x%x" % (spec.evidence_label, val & ((1 << 64) - 1))
+                writer.add("A", spec.anchor_kind, caller.getName(),
+                           format_addr(site), evidence)
+                count += 1
+            counts[spec.name] = count
+        return counts
+    finally:
+        if own_cache:
+            decomp_cache.dispose()
+
+
+# --------------------------------------------------------------------------
 # Anchor writer
 # --------------------------------------------------------------------------
 
@@ -365,7 +727,8 @@ class StringRule(object):
 
 
 def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
-                    function_index=None, enrich=None):
+                    function_index=None, enrich=None, api_specs=None,
+                    fast_mode=False):
     """Convenience runner for the simpler regex-bag scripts.
 
     Walks the string index once per rule (cheap; index is cached) and
@@ -422,6 +785,18 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
         writer.warn("string_index_truncated_at_%d" % string_index.max_strings)
     if function_rules and function_index is not None and function_index.truncated:
         writer.warn("function_index_truncated_at_%d" % function_index.max_functions)
+
+    if api_specs:
+        cache = DecompCache(fast_mode=fast_mode)
+        try:
+            counts = enrich_callsite_args(writer, api_specs, decomp_cache=cache)
+            covered = sum(1 for v in counts.values() if v > 0)
+            writer.warn("api_callsites=%d/%d apis"
+                        % (sum(counts.values()), len(counts)))
+            if covered == 0:
+                writer.warn("no_api_callsites_resolved")
+        finally:
+            cache.dispose()
 
     if enrich is not None:
         try:

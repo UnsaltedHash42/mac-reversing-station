@@ -26,10 +26,13 @@ A scan with nothing to report emits the header row and zero anchor rows. Per-sca
 
 `_re_lib.py` provides:
 
-- `AnchorWriter` — buffer + flush anchor rows in stable order
-- `StringIndex` / `FunctionIndex` — capped, truncation-aware program walks
-- `find_external` / `callers_of` — symbol resolution and xref walking for tier-A enrichment
-- `StringRule` + `run_string_scan` — declarative regex-bag runner for the simpler scans
+- `AnchorWriter` — buffer + flush anchor rows in stable order.
+- `StringIndex` / `FunctionIndex` — capped, truncation-aware program walks.
+- `find_external` / `callers_of` — symbol resolution and xref walking.
+- `DecompCache` — lazy `DecompInterface` wrapper for argument recovery.
+- `recover_call_string_arg` / `recover_call_const_arg` / `recover_call_arg_fast` — pcode-driven argument extraction with an instruction-walk fallback.
+- `APISpec` + `enrich_callsite_args` — declarative tier-A recovery: each scan declares which APIs it cares about and which arg index carries the literal value, and the lib emits one tier-A row per callsite with the recovered string / const in the evidence column.
+- `StringRule` + `run_string_scan` — declarative regex-bag runner for the tier-B / tier-C passes.
 
 Every scan script imports `_re_lib`. The smoke test enforces that.
 
@@ -50,7 +53,9 @@ Every scan script imports `_re_lib`. The smoke test enforces that.
 | `scan_endpoint_security_client.py` | tier A `es_client_callsite`; tier B `es_handler_impl`, `policy_decision_impl`; tier C `es_client_string`, `es_event_string`, `cache_string`, `policy_string` |
 | `scan_system_extension_surface.py` | tier B `extension_lifecycle_impl`, `ne_provider_impl`; tier C `extension_string`, `es_string`, `ext_entitlement_string`, `approval_string` |
 | `scan_launchd_machservice_topology.py` | tier A `bootstrap_callsite`; tier B `listener_setup_impl`; tier C `mach_service_string`, `listener_api_string`, `entitlement_string` |
-| `scan_private_framework_dependency.py` | tier A `dlopen_callsite`; tier B `dynamic_resolver_impl`; tier C `private_framework_path`, `public_framework_path`, `dyld_token`, `weak_link_token` |
+| `scan_private_framework_dependency.py` | tier A `dlopen_callsite` + path arg, `dlsym_callsite` + symbol arg, `nsclassfromstring_callsite` + class arg, `nsselectorfromstring_callsite` + selector arg; tier B `dynamic_resolver_impl`; tier C `private_framework_path`, `public_framework_path`, `dyld_token`, `weak_link_token` |
+| `scan_iokit_user_clients.py` | tier A `ioservice_matching_callsite` + class arg, `ioconnect_call_method_callsite` + selector const, `ioconnect_call_async_method_callsite` + selector const, `ioconnect_map_memory_callsite` + memory_type const; tier B `user_client_handler_impl`, `ioservice_open_impl`; tier C `io_service_class_string`, `io_kit_string` |
+| `scan_url_scheme_handlers.py` | tier A `ls_set_default_handler_callsite` + scheme arg, `ls_copy_default_handler_callsite` + scheme arg, `cfurl_create_with_string_callsite` + url arg; tier B `open_url_handler_impl`, `url_validator_impl`; tier C `url_scheme_string`, `cfbundle_url_key_string`, `nsappletevent_url_string` |
 
 ### Specialized
 

@@ -147,3 +147,24 @@ authored proofs.
   project clone's gitignored `pocs/` tree, with reliability capture,
   evidence linking, and Scriptorium/Chronicle anchoring.
 
+## Wave 6 — Bug-class Expansion
+
+The Wave 6 hunts pair with the four new bug-class scan scripts and
+extend coverage beyond the Wave 2 hunts.
+
+- `Skills/offensive-macos-hunt-tcc-prompt-attribution` — TCC prompt
+  attribution and responsibility laundering: pid-only attribution,
+  responsible-process inheritance via launchd, substituted bundle
+  identity. Pairs with `ghidra-scripts/scan_tcc_prompt_surface.py`.
+- `Skills/offensive-macos-hunt-iokit-userclient` — IOKit user-client
+  selector surface enumeration, scalar/struct validation, async-port
+  handling. Pairs with `ghidra-scripts/scan_iokit_user_clients.py`.
+- `Skills/offensive-macos-hunt-private-framework-hijack` — dynamic
+  loading hijack opportunities: weak-linked PrivateFrameworks,
+  attacker-controlled `dlopen`, NSClassFromString-driven plugin loads.
+  Pairs with `ghidra-scripts/scan_private_framework_dependency.py`.
+- `Skills/offensive-macos-hunt-url-scheme-hijack` — custom URL scheme
+  registration, `application:openURL:` dispatcher trust, scheme
+  squatting via LaunchServices. Pairs with
+  `ghidra-scripts/scan_url_scheme_handlers.py`.
+

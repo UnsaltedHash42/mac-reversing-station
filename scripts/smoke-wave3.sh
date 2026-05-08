@@ -91,6 +91,8 @@ required = [
     "ghidra-scripts/scan_system_extension_surface.py",
     "ghidra-scripts/scan_endpoint_security_client.py",
     "ghidra-scripts/scan_private_framework_dependency.py",
+    "ghidra-scripts/scan_iokit_user_clients.py",
+    "ghidra-scripts/scan_url_scheme_handlers.py",
 ]
 missing = [path for path in required if not Path(path).is_file()]
 if missing:
