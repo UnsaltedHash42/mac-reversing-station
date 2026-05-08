@@ -27,7 +27,7 @@
 # @category Mach-O.TCC
 # @runtime Jython
 
-from _re_lib import APISpec, StringRule, run_string_scan
+from _re_lib import APISpec, ObjCSelectorSpec, StringRule, run_string_scan
 
 
 API_SPECS = [
@@ -41,6 +41,22 @@ API_SPECS = [
             anchor_kind="sectaskcopyentitlement_callsite", evidence_label="entitlement"),
     APISpec("SecTaskCopySigningIdentifier", arg_index=0, recover_kind="none",
             anchor_kind="sectaskcopyident_callsite"),
+]
+
+# AVFoundation / Photos / EventKit prompts go through ObjC dispatch.
+OBJC_SPECS = [
+    ObjCSelectorSpec("requestAccessForMediaType:completionHandler:",
+                     anchor_kind="avfoundation_request_access_callsite"),
+    ObjCSelectorSpec("requestAccessWithCompletionHandler:",
+                     anchor_kind="objc_request_access_callsite"),
+    ObjCSelectorSpec("requestAuthorizationForAccessLevel:handler:",
+                     anchor_kind="photos_request_authorization_callsite"),
+    ObjCSelectorSpec("requestAuthorizationWithCompletionHandler:",
+                     anchor_kind="objc_request_authorization_callsite"),
+    ObjCSelectorSpec("authorizationStatusForMediaType:",
+                     anchor_kind="avfoundation_auth_status_callsite"),
+    ObjCSelectorSpec("authorizationStatus",
+                     anchor_kind="objc_auth_status_callsite"),
 ]
 
 
@@ -69,4 +85,5 @@ run_string_scan(
                    max_anchors=16, evidence_label="function"),
     ],
     api_specs=API_SPECS,
+    objc_specs=OBJC_SPECS,
 )

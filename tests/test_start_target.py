@@ -15,10 +15,16 @@ TEMPLATE = REPO / "templates/findings-repo"
 
 
 def load_start_target_module():
-    """Load scripts/start-target.py as a module so helper functions can be unit-tested."""
-    spec = importlib.util.spec_from_file_location("start_target", SCRIPT)
+    """Load scripts/start-target.py as a module so helper functions can be unit-tested.
+
+    The script imports from a `start_target` package next to itself, so we
+    register this loaded shim under a distinct name (`start_target_script`)
+    to avoid colliding with the package in sys.modules.
+    """
+    sys.path.insert(0, str(SCRIPT.parent))
+    spec = importlib.util.spec_from_file_location("start_target_script", SCRIPT)
     module = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault("start_target", module)
+    sys.modules.setdefault("start_target_script", module)
     spec.loader.exec_module(module)
     return module
 

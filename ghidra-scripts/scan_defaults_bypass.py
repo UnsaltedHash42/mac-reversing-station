@@ -28,7 +28,7 @@
 
 import re
 
-from _re_lib import APISpec, StringRule, run_string_scan
+from _re_lib import APISpec, ObjCSelectorSpec, StringRule, run_string_scan
 
 
 API_SPECS = [
@@ -44,6 +44,28 @@ API_SPECS = [
             anchor_kind="cfprefs_setappvalue_callsite", evidence_label="key"),
     APISpec("CFPreferencesSetValue", arg_index=0, recover_kind="string",
             anchor_kind="cfprefs_setvalue_callsite", evidence_label="key"),
+]
+
+# NSUserDefaults uses ObjC dispatch. Recover the key from objc_msgSend.
+OBJC_SPECS = [
+    ObjCSelectorSpec("boolForKey:",
+                     anchor_kind="nsuserdefaults_boolforkey_callsite",
+                     evidence_label="key"),
+    ObjCSelectorSpec("integerForKey:",
+                     anchor_kind="nsuserdefaults_integerforkey_callsite",
+                     evidence_label="key"),
+    ObjCSelectorSpec("stringForKey:",
+                     anchor_kind="nsuserdefaults_stringforkey_callsite",
+                     evidence_label="key"),
+    ObjCSelectorSpec("objectForKey:",
+                     anchor_kind="nsuserdefaults_objectforkey_callsite",
+                     evidence_label="key"),
+    ObjCSelectorSpec("setBool:forKey:",
+                     anchor_kind="nsuserdefaults_setboolforkey_callsite",
+                     evidence_label="key"),
+    ObjCSelectorSpec("setObject:forKey:",
+                     anchor_kind="nsuserdefaults_setobjectforkey_callsite",
+                     evidence_label="key"),
 ]
 
 
@@ -87,4 +109,5 @@ run_string_scan(
                    max_anchors=12, evidence_label="function"),
     ],
     api_specs=API_SPECS,
+    objc_specs=OBJC_SPECS,
 )

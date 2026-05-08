@@ -168,3 +168,17 @@ extend coverage beyond the Wave 2 hunts.
   squatting via LaunchServices. Pairs with
   `ghidra-scripts/scan_url_scheme_handlers.py`.
 
+## Wave 7 — More bug-class coverage
+
+- `Skills/offensive-macos-hunt-mig-subsystem` — Mach Interface Generator
+  subsystem audit covering routine number reachability, type-validation
+  gaps in MIG-generated thunks, and the implementation-side trust
+  decisions in user-space and kernel MIG. Pairs with
+  `ghidra-scripts/scan_launchd_machservice_topology.py` and
+  `dump_xpc_listeners.py`.
+- `Skills/offensive-macos-hunt-keychain-access-group` — confused-deputy
+  bugs across keychain access groups: shared `keychain-access-groups`
+  entitlements, ACL omission, group expansion across versions, items
+  written by app A that app B in the same group trusts. Pairs with
+  `ghidra-scripts/scan_persistent_authorization.py`.
+
