@@ -12,6 +12,7 @@ Do not choose a family from the app's marketing category. Start with target inta
 | Enterprise / security agents | App runs endpoint agents, filters, device-management clients, telemetry collectors, or root/system services. | `docs/playbooks/enterprise-security-agents.md` |
 | Developer tools | App executes scripts, manages packages, runs build tools, controls VMs, or spawns external commands. | `docs/playbooks/developer-tools.md` |
 | TCC-heavy consumer apps | App requests privacy permissions such as Accessibility, Screen Recording, Automation, camera/mic, Desktop/Documents, or Full Disk Access. | `docs/playbooks/tcc-heavy-consumer-apps.md` |
+| `apple-os-components` | Target is an Apple-signed binary, daemon, agent, framework, PrivateFramework, system/network extension, Endpoint Security client, DriverKit/IOKit-adjacent component, or the launchd/MachService surfaces that connect them. | `docs/playbooks/os-components.md` |
 | `unknown/mixed` | Inventory does not clearly fit one family, or several labels apply with equal weight. | Continue with `docs/ontology/macos-vulnerability-classes.md` and record routing notes in `CORPUS.md`. |
 
 ## Shared Pass Workflow

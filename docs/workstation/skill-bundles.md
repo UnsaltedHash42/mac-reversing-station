@@ -125,3 +125,17 @@ LLDB confirmation.
 - `Skills/offensive-macos-gatehouse-ghidra-lldb` — static-to-dynamic workflow for
   carrying Ghidra symbols, functions, and addresses into LLDB confirmation.
 
+## Wave 5 — OS Component Lane
+
+Wave 5 extends the station with first-class macOS OS-component research:
+launchd/MachService surfaces, frameworks/PrivateFrameworks, system and network
+extensions, Endpoint Security clients, DriverKit components, and the
+exploitability/chain/PoC scaffolding that turns confirmed findings into
+authored proofs.
+
+- `Skills/offensive-macos-family-os-components` — target-family workflow for
+  Apple OS internals: app bundles, daemons, agents, frameworks,
+  PrivateFrameworks, system/network extensions, Endpoint Security clients,
+  DriverKit components, and the launchd/MachService surfaces that connect
+  them.
+
