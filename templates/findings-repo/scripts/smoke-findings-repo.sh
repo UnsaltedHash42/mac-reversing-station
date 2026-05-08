@@ -27,6 +27,7 @@ for path in \
     "templates/poc/README.md.template" \
     ".cursor/rules/rule-analysis.mdc" \
     "findings/analysis" \
+    "findings/candidates" \
     "findings/reports" \
     "artifacts" \
     "tools/custom"

@@ -135,26 +135,38 @@ tccd    C     audit_token  xpc_connection_get_audit_token  -          string=xpc
 - **Tier B** = Mach-O / ObjC metadata or embedded plist. Address may be a callsite or a metadata location.
 - **Tier C** = string heuristic. A starting point in Ghidra; do not trust the row alone.
 
-The TSV is saved under `findings/analysis/PASS-001-tccd-xpc-endpoints.tsv`. The agent updates `INDEX.md` with one candidate row per tier-A anchor that needs follow-up, and one Scriptorium entry pointing at the TSV with the binary's sha256 so future evidence is pinned to the same bytes.
+The TSV is saved under `findings/analysis/PASS-001-tccd-xpc-endpoints.tsv`. For each tier-A anchor that needs follow-up, the agent runs `scripts/triage.py create` to mint a candidate JSON file at `findings/candidates/C-NNN.json`, then `scripts/triage.py render` so `INDEX.md` reflects the new candidates. Scriptorium gets one anchor pointing at the TSV with the binary's sha256, hash-pinning the evidence to the exact bytes scanned.
 
 > **What you did:** asked for the recipe. **What the agent did:** produced navigable evidence. Counts are not evidence; addresses are evidence.
 
 ## 4. Triage (5 min)
 
-Open `INDEX.md`. You should see candidate rows like:
+Run `scripts/triage.py list` to see the candidates the agent created:
 
 ```
-| C-001 | PASS-001 | tccd should-accept-1 | wrong-door | scan-hit | medium | findings/analysis/PASS-001-tccd-xpc-endpoints.tsv | confirm in lldb |
-| C-002 | PASS-001 | tccd should-accept-2 | wrong-door | scan-hit | medium | findings/analysis/PASS-001-tccd-xpc-endpoints.tsv | confirm in lldb |
+ID       PASS         TARGET     CLASS                  STATUS    SEVERITY  TITLE
+C-001    PASS-001     T-001      wrong-door             scan-hit  medium    tccd should-accept-1
+C-002    PASS-001     T-001      wrong-door             scan-hit  medium    tccd should-accept-2
 ```
 
-For the tutorial, pick C-001 and ask:
+Look at one candidate file directly with `scripts/triage.py show C-001` —
+it carries the anchor (tier, kind, address), an evidence list (empty so
+far), and a history list (one entry: when scan-hit was recorded).
+
+Pick C-001 and ask:
 
 ```
 read the decompilation for C-001 and tell me whether the audit token is checked before the request is honored
 ```
 
-The agent will use `ghidra-mcp` to fetch the decompiled function at the anchor address and read it. For tccd, the answer for the most prominent anchors will be a variant of "yes, the audit token is captured and the requesting subject is resolved against the TCC database before the request is honored." The agent should record that conclusion as evidence and update C-001's status — likely to `closed` with rationale `expected behavior; subject is resolved via audit token before authorization`.
+The agent will use `ghidra-mcp` to fetch the decompiled function at the anchor address and read it. For tccd, the answer for the most prominent anchors will be a variant of "yes, the audit token is captured and the requesting subject is resolved against the TCC database before the request is honored." The agent should record that conclusion as evidence and transition C-001:
+
+```bash
+scripts/triage.py transition C-001 escalated
+scripts/triage.py transition C-001 reproducing
+```
+
+(closure happens after lldb confirmation in step 6).
 
 If the agent claims something *is* a bug, stop. Verify the decompilation yourself. tccd is well-trodden ground; a confident "this is a bug" from the agent on a first pass is almost certainly wrong, and a confident "this is fine" is what you want to verify the loop is working. The exercise is calibrating the agent to your trust.
 
@@ -175,7 +187,7 @@ Gatehouse fires. The agent will:
 1. Re-read `LAB_SAFETY.md` to confirm read-only attach is allowed.
 2. Use `lldb_run_anchors` against tccd with the symbol from C-001.
 3. Capture the lldb transcript to `artifacts/PASS-001-tccd-c001.lldb.log`.
-4. Update C-001's row with the confirmation reference and the SHA256 of the binary slice that was running.
+4. Run `scripts/triage.py transition C-001 confirmed --evidence-path artifacts/PASS-001-tccd-c001.lldb.log --evidence-kind lldb_transcript --binary-sha256 <hex>` to attach the transcript and pin the binary slice.
 
 If lldb cannot attach to tccd (SIP, hardened runtime, codesign restrictions), the agent should record that as a *blocker*, not a closure. "Cannot attach" is not the same as "no bug here."
 
@@ -183,16 +195,23 @@ If lldb cannot attach to tccd (SIP, hardened runtime, codesign restrictions), th
 
 ## 6. Close (3 min)
 
-Tell the agent:
+Run:
 
+```bash
+scripts/triage.py transition C-001 closed \
+  --reason 'audit token resolved before authorization; expected behavior'
+scripts/triage.py render
 ```
-close C-001 with rationale based on the decompilation and the lldb transcript
-```
 
-The agent will:
+The triage CLI:
 
-- Set C-001's status to `closed` in `INDEX.md`.
-- Append a Scriptorium entry naming the closure rationale, decompilation citation, and lldb transcript.
+- Sets C-001's status to `closed` and records the rationale.
+- Appends to history; closure is now a permanent part of the record.
+- Refuses further transitions unless you hand-edit the JSON.
+
+Then ask the agent to:
+
+- Append a Scriptorium entry naming the closure rationale, decompilation citation, and lldb transcript path with the binary's sha256.
 - Increment `METRICS.md` for the pass — closures are research output and should be counted.
 - Update `HANDOFF.md` with the next thing to do (probably "C-002, same procedure").
 
@@ -208,7 +227,7 @@ The agent will:
 │   ├── PASS-001-tccd-dossier.json                    # surfaces + watch fields
 │   └── PASS-001-tccd-xpc-endpoints.tsv               # tiered anchor rows
 ├── findings/candidates/
-│   └── C-001.yaml                                    # candidate state, closed
+│   └── C-001.json                                    # candidate state, closed
 ├── artifacts/
 │   └── PASS-001-tccd-c001.lldb.log                   # lldb transcript
 ├── CORPUS.md                                         # target inventory + watch row

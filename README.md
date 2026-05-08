@@ -28,7 +28,7 @@ Every step has an artifact:
 | Watch | next-move recommendation | `CORPUS.md` Watch Decision Support |
 | Recipe | named procedure | `docs/playbooks/investigation-recipes.md` |
 | Scan | tiered anchor TSV | `findings/analysis/PASS-*.tsv` |
-| Triage | candidate state | `findings/candidates/C-*.yaml` |
+| Triage | candidate state | `findings/candidates/C-*.json` |
 | Confirm | lldb transcript + hash | `artifacts/PASS-*.lldb.log` + `SCRIPTORIUM.md` |
 | Record | evidence anchor | `SCRIPTORIUM.md`, `CHRONICLE.md`, `HANDOFF.md` |
 
@@ -321,7 +321,7 @@ The agent will run this loop for you. The numbered steps are what you will see h
 2. **Sync to lab host.** If Ghidra needs the binary, `scripts/rsync-to-vm.sh` records the `Lab Host Path Mapping` row.
 3. **Watch.** Type "what should we look at next" → `watch-static-analysis` reads CORPUS, picks one Maproom recipe, names the next artifact and the stop condition.
 4. **Recipe.** The agent runs the recipe via `ghidra-mcp` against the recorded lab path. Scan scripts emit tiered anchor TSVs to `findings/analysis/`.
-5. **Triage.** The agent creates a candidate file per tier-A anchor at `findings/candidates/C-NNN.yaml`. Status starts at `scan-hit`. Use `scripts/triage.py` to transition states.
+5. **Triage.** The agent creates a candidate file per tier-A anchor at `findings/candidates/C-NNN.json` via `scripts/triage.py create`. Status starts at `scan-hit`; transitions go through `scripts/triage.py transition`. The CLI rejects illegal transitions and requires `--reason` for `closed`.
 6. **Confirm.** Tier-A anchor + `LAB_SAFETY.md` permission → `gatehouse-ghidra-lldb` → `lldb_run_anchors` → transcript under `artifacts/`. Hash-pin the binary slice.
 7. **Record.** Every conclusion lands in `SCRIPTORIUM.md` (anchor) + `CHRONICLE.md` (timeline) + `HANDOFF.md` (next move). `METRICS.md` counts closures and escalations.
 8. **Repeat or chain.** When two confirmed primitives could combine, `chain-discovery` fires and produces an Exploitability And Chainability row. When a single confirmed primitive justifies a PoC, `poc-authoring` takes over.
@@ -473,7 +473,7 @@ A productive session leaves behind:
 - A target recorded in `CORPUS.md` with surfaces and family labels.
 - Dossier and target map under `findings/analysis/`.
 - Tiered anchor TSVs from each scan that ran.
-- Candidate YAML files under `findings/candidates/`, each with a defensible state.
+- Candidate JSON files under `findings/candidates/`, each with a defensible state.
 - lldb transcripts under `artifacts/` for confirmed dynamic checks.
 - Scriptorium anchors that hash-pin every claim.
 - A `HANDOFF.md` that lets the next session resume cold.

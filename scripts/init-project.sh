@@ -41,7 +41,7 @@ echo "==> Initializing findings files for ${PROJECT_NAME}"
 rsync -a --ignore-existing "${ROOT}/templates/findings-repo/" ./
 cp -n HANDOFF.md.template HANDOFF.md
 cp -n machines.md.template machines.md
-mkdir -p targets findings/analysis findings/reports artifacts tools/custom
+mkdir -p targets findings/analysis findings/candidates findings/reports artifacts tools/custom
 
 if [[ -n "${REMOTE_NAME}" ]]; then
     echo "==> Setting git origin to ${REMOTE_NAME}"
