@@ -1,85 +1,92 @@
-# Ghidra script: scan one loaded program for persistent authorization and bookmark signals.
-# Output TSV:
-# target	bookmark_refs	keychain_refs	container_store_refs	sandbox_refs	file_access_refs	confidence	evidence
+# Ghidra script: scan one loaded program for persistent authorization /
+# bookmark / keychain / sandbox-extension surface.
+#
+# Tier A (callsite-verified):
+#   keychain_callsite           callers of SecItemAdd / SecItemCopyMatching /
+#                               SecKeychainAddGenericPassword
+#   bookmark_callsite           callers of CFURLCreateBookmarkData /
+#                               URLByResolvingBookmarkData
+#
+# Tier B (function-name match):
+#   bookmark_handler            functions named *bookmark* / *startAccessing*
+#   sandbox_extension_handler   functions named *extension* / *consume* / *issue*
+#
+# Tier C (string heuristic):
+#   bookmark_string             security-scoped / ScopedBookmark / bookmark tokens
+#   keychain_string             SecItem / kSecClass / Keychain / kSecAttr*
+#   sandbox_string              com.apple.security.app-sandbox / extension / consume
+#   container_string            Group Containers / Application Scripts / Application Support
+#
+# @category Mach-O.PersistentAuthorization
+# @runtime Jython
 
-import re
+from _re_lib import (
+    StringRule, format_addr, callers_of, find_external, run_string_scan,
+)
 
 
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
+KEYCHAIN_APIS = (
+    "SecItemAdd",
+    "SecItemCopyMatching",
+    "SecItemUpdate",
+    "SecKeychainAddGenericPassword",
+    "SecKeychainFindGenericPassword",
+)
+
+BOOKMARK_APIS = (
+    "CFURLCreateBookmarkData",
+    "CFURLCreateByResolvingBookmarkData",
+    "URLByResolvingBookmarkData",
+    "bookmarkDataWithOptions",
+)
 
 
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        return currentProgram.getName()
-
-
-def iter_strings(limit=9000):
-    listing = currentProgram.getListing()
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
+def add_callsites(writer):
+    for api in KEYCHAIN_APIS:
+        fn = find_external(api)
+        if fn is None:
             continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "keychain_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
+    for api in BOOKMARK_APIS:
+        fn = find_external(api)
+        if fn is None:
             continue
-        seen += 1
-        yield text
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "bookmark_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
 
 
-bookmark_re = re.compile(r"(bookmark|security.?scoped|startAccessingSecurityScopedResource|ScopedBookmark)", re.I)
-keychain_re = re.compile(r"(SecItem|kSecClass|Keychain|kSecAttrAccessGroup|kSecAttrService|ACL)", re.I)
-container_re = re.compile(r"(Container|Application Scripts|Group Containers|Application Support|\.plist|NSUserDefaults|CFPreferences)", re.I)
-sandbox_re = re.compile(r"(sandbox|extension|com\.apple\.security\.app-sandbox|consume|issue_extension)", re.I)
-file_re = re.compile(r"(NSOpenPanel|NSSavePanel|fileURL|URLByResolvingBookmarkData|read|write|copyItem|moveItem)", re.I)
-
-strings = list(iter_strings())
-
-bookmarks = sorted({s for s in strings if bookmark_re.search(s)})
-keychain = sorted({s for s in strings if keychain_re.search(s)})
-containers = sorted({s for s in strings if container_re.search(s)})
-sandbox = sorted({s for s in strings if sandbox_re.search(s)})
-file_access = sorted({s for s in strings if file_re.search(s)})
-
-score = 0
-score += 2 if bookmarks else 0
-score += 2 if keychain else 0
-score += 1 if containers else 0
-score += 1 if sandbox else 0
-score += 1 if file_access else 0
-confidence = "high" if score >= 5 else ("medium" if score >= 3 else ("low" if score else "none"))
-
-evidence = []
-for label, values in (
-    ("bookmarks", bookmarks[:4]),
-    ("keychain", keychain[:4]),
-    ("containers", containers[:4]),
-    ("sandbox", sandbox[:4]),
-    ("file", file_access[:4]),
-):
-    if values:
-        evidence.append("%s=%s" % (label, "|".join(values).replace("\t", " ")))
-
-emit("target\tbookmark_refs\tkeychain_refs\tcontainer_store_refs\tsandbox_refs\tfile_access_refs\tconfidence\tevidence")
-emit(
-    "%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s"
-    % (
-        program_name(),
-        len(bookmarks),
-        len(keychain),
-        len(containers),
-        len(sandbox),
-        len(file_access),
-        confidence,
-        "; ".join(evidence),
-    )
+run_string_scan(
+    scan_name="scan_persistent_authorization",
+    rules=[
+        StringRule("C", "bookmark_string",
+                   r"(bookmark|security.?scoped|startAccessingSecurityScopedResource|ScopedBookmark)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "keychain_string",
+                   r"(SecItem|kSecClass|Keychain|kSecAttrAccessGroup|kSecAttrService|ACL)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "sandbox_string",
+                   r"(sandbox|com\.apple\.security\.app-sandbox|consume|issue_extension)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "container_string",
+                   r"(Group Containers|Application Scripts|Application Support|NSUserDefaults|CFPreferences)",
+                   max_anchors=12, evidence_label="string"),
+    ],
+    function_rules=[
+        StringRule("B", "bookmark_handler",
+                   r"(bookmark|startAccessing|stopAccessing|resolveBookmark)",
+                   max_anchors=12, evidence_label="function"),
+        StringRule("B", "sandbox_extension_handler",
+                   r"(extension|consume|issue_extension|sandbox_extension)",
+                   max_anchors=12, evidence_label="function"),
+    ],
+    enrich=add_callsites,
 )

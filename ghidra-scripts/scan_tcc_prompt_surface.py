@@ -1,88 +1,74 @@
-# Ghidra script: scan one loaded program for TCC prompt-attribution and privacy surface signals.
-# Output TSV:
-# target	tcc_refs	prompt_refs	bundle_identity_refs	apple_event_refs	privacy_services	confidence	evidence
+# Ghidra script: scan one loaded program for TCC prompt-attribution / privacy surface.
+#
+# Tier A (callsite-verified):
+#   tcc_callsite                callers of TCCAccessRequest / TCCAccessPreflight /
+#                               SecTaskCopyValueForEntitlement
+#
+# Tier B (function-name match):
+#   prompt_handler              functions named *prompt* / *consent* / *permission*
+#   identity_resolver           functions named *bundleIdentifier* / *executablePath*
+#                               / *target_identifier* / *responsible*
+#
+# Tier C (string heuristic):
+#   tcc_string                  TCC / kTCCService / com.apple.TCC / tccd
+#   apple_event_string          AppleEvent / kTCCServiceAppleEvents / NSAppleEventsUsageDescription
+#   privacy_service_string      Accessibility / ScreenCapture / Camera / Microphone /
+#                               FullDisk / DocumentsFolder etc.
+#   identity_string             bundleIdentifier / executablePath / SecRequirement / csreq
+#
+# @category Mach-O.TCC
+# @runtime Jython
 
-import re
-
-
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
-
-
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        return currentProgram.getName()
-
-
-def iter_strings(limit=9000):
-    listing = currentProgram.getListing()
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
-            continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
-            continue
-        seen += 1
-        yield text
-
-
-tcc_re = re.compile(r"(TCC|TCCAccessRequest|kTCCService|com\.apple\.TCC|tccd)", re.I)
-prompt_re = re.compile(r"(prompt|consent|permission|displayName|localizedName|target_prompt)", re.I)
-identity_re = re.compile(r"(bundleIdentifier|executablePath|target_identifier|target_path|SecRequirement|csreq)", re.I)
-apple_event_re = re.compile(r"(AppleEvent|Apple Events|kTCCServiceAppleEvents|NSAppleEventsUsageDescription|AEDesc)", re.I)
-privacy_re = re.compile(
-    r"(Accessibility|ScreenCapture|ScreenRecording|Camera|Microphone|DesktopFolder|DocumentsFolder|DownloadsFolder|FullDisk|ListenEvent|PostEvent)",
-    re.I,
+from _re_lib import (
+    StringRule, format_addr, callers_of, find_external, run_string_scan,
 )
 
-strings = list(iter_strings())
 
-tcc_refs = sorted({s for s in strings if tcc_re.search(s)})
-prompt_refs = sorted({s for s in strings if prompt_re.search(s)})
-identity_refs = sorted({s for s in strings if identity_re.search(s)})
-apple_event_refs = sorted({s for s in strings if apple_event_re.search(s)})
-privacy_services = sorted({s for s in strings if privacy_re.search(s)})
+TCC_APIS = (
+    "TCCAccessRequest",
+    "TCCAccessPreflight",
+    "TCCAccessRequestForSelf",
+    "SecTaskCopyValueForEntitlement",
+    "SecTaskCopySigningIdentifier",
+)
 
-score = 0
-score += 2 if tcc_refs else 0
-score += 2 if prompt_refs else 0
-score += 2 if identity_refs else 0
-score += 1 if apple_event_refs else 0
-score += 1 if privacy_services else 0
-confidence = "high" if score >= 6 else ("medium" if score >= 3 else ("low" if score else "none"))
 
-evidence = []
-for label, values in (
-    ("tcc", tcc_refs[:4]),
-    ("prompt", prompt_refs[:4]),
-    ("identity", identity_refs[:4]),
-    ("apple_events", apple_event_refs[:3]),
-    ("privacy", privacy_services[:4]),
-):
-    if values:
-        evidence.append("%s=%s" % (label, "|".join(values).replace("\t", " ")))
+def add_tcc_callsites(writer):
+    for api in TCC_APIS:
+        fn = find_external(api)
+        if fn is None:
+            continue
+        for caller, site in callers_of(fn):
+            if caller is None:
+                continue
+            writer.add("A", "tcc_callsite", caller.getName(),
+                       format_addr(site),
+                       "api=%s; site=%s" % (api, format_addr(site)))
 
-emit("target\ttcc_refs\tprompt_refs\tbundle_identity_refs\tapple_event_refs\tprivacy_services\tconfidence\tevidence")
-emit(
-    "%s\t%d\t%d\t%d\t%d\t%d\t%s\t%s"
-    % (
-        program_name(),
-        len(tcc_refs),
-        len(prompt_refs),
-        len(identity_refs),
-        len(apple_event_refs),
-        len(privacy_services),
-        confidence,
-        "; ".join(evidence),
-    )
+
+run_string_scan(
+    scan_name="scan_tcc_prompt_surface",
+    rules=[
+        StringRule("C", "tcc_string",
+                   r"(TCC|TCCAccessRequest|kTCCService|com\.apple\.TCC|tccd)",
+                   max_anchors=24, evidence_label="string"),
+        StringRule("C", "apple_event_string",
+                   r"(AppleEvent|Apple Events|kTCCServiceAppleEvents|NSAppleEventsUsageDescription|AEDesc)",
+                   max_anchors=12, evidence_label="string"),
+        StringRule("C", "privacy_service_string",
+                   r"(Accessibility|ScreenCapture|ScreenRecording|Camera|Microphone|DesktopFolder|DocumentsFolder|DownloadsFolder|FullDisk|ListenEvent|PostEvent)",
+                   max_anchors=20, evidence_label="string"),
+        StringRule("C", "identity_string",
+                   r"(bundleIdentifier|executablePath|target_identifier|target_path|SecRequirement|csreq)",
+                   max_anchors=20, evidence_label="string"),
+    ],
+    function_rules=[
+        StringRule("B", "prompt_handler",
+                   r"(prompt|consent|permission|displayName|localizedName)",
+                   max_anchors=16, evidence_label="function"),
+        StringRule("B", "identity_resolver",
+                   r"(bundleIdentifier|executablePath|target_identifier|responsible|effectiveUserIdentifier)",
+                   max_anchors=16, evidence_label="function"),
+    ],
+    enrich=add_tcc_callsites,
 )

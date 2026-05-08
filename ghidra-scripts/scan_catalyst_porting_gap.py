@@ -1,79 +1,40 @@
-# Ghidra script: scan one loaded program for Catalyst/platform-conditional bypass strings.
-# Output TSV:
-# target	catalyst_refs	platform_checks	entitlement_refs	bypass_refs	confidence	evidence
+# Ghidra script: scan for Catalyst / iOS-on-Mac platform-conditional bypasses.
+#
+# Tier B (function-name match):
+#   platform_branch             functions named *isCatalyst* / *targetEnvironment* /
+#                               *isMac* / *iOSAppOnMac*
+#
+# Tier C (string heuristic):
+#   catalyst_string             catalyst / MacCatalyst / isiOSAppOnMac
+#   platform_string             targetEnvironment / macos / iphone / ipad / ios
+#   ent_string                  entitlement / com.apple.private / SecTaskCopyValueForEntitlement
+#   bypass_string               bypass / skip / non-macos / exempt / legacy / compat
+#
+# @category Mach-O.CatalystPortingGap
+# @runtime Jython
 
-import re
-
-
-def emit(line):
-    try:
-        println(line)
-    except NameError:
-        print(line)
-
-
-def program_name():
-    try:
-        return currentProgram.getExecutablePath() or currentProgram.getName()
-    except Exception:
-        return currentProgram.getName()
+from _re_lib import StringRule, run_string_scan
 
 
-def iter_strings(limit=7000):
-    listing = currentProgram.getListing()
-    seen = 0
-    for data in listing.getDefinedData(True):
-        if seen >= limit:
-            break
-        try:
-            value = data.getValue()
-        except Exception:
-            continue
-        text = value if isinstance(value, str) else (str(value) if value is not None else "")
-        if len(text) < 3:
-            continue
-        seen += 1
-        yield text
-
-
-catalyst_re = re.compile(r"(catalyst|MacCatalyst|is-catalyst-binary|isiOSAppOnMac)", re.I)
-platform_re = re.compile(r"(platform|targetEnvironment|macos|iphone|ipad|ios|non macos|isMac)", re.I)
-ent_re = re.compile(r"(entitlement|com\.apple\.private|SecTaskCopyValueForEntitlement)", re.I)
-bypass_re = re.compile(r"(bypass|skip|allow.*catalyst|non macos|exempt|legacy|compat)", re.I)
-
-strings = list(iter_strings())
-catalyst = sorted({s for s in strings if catalyst_re.search(s)})
-platform = sorted({s for s in strings if platform_re.search(s)})
-entitlements = sorted({s for s in strings if ent_re.search(s)})
-bypasses = sorted({s for s in strings if bypass_re.search(s)})
-
-score = 0
-score += 2 if catalyst else 0
-score += 1 if platform else 0
-score += 2 if entitlements else 0
-score += 1 if bypasses else 0
-confidence = "high" if score >= 5 else ("medium" if score >= 3 else ("low" if score else "none"))
-
-evidence = []
-for label, values in (
-    ("catalyst", catalyst[:4]),
-    ("platform", platform[:4]),
-    ("entitlements", entitlements[:4]),
-    ("bypasses", bypasses[:4]),
-):
-    if values:
-        evidence.append("%s=%s" % (label, "|".join(values).replace("\t", " ")))
-
-emit("target\tcatalyst_refs\tplatform_checks\tentitlement_refs\tbypass_refs\tconfidence\tevidence")
-emit(
-    "%s\t%d\t%d\t%d\t%d\t%s\t%s"
-    % (
-        program_name(),
-        len(catalyst),
-        len(platform),
-        len(entitlements),
-        len(bypasses),
-        confidence,
-        "; ".join(evidence),
-    )
+run_string_scan(
+    scan_name="scan_catalyst_porting_gap",
+    rules=[
+        StringRule("C", "catalyst_string",
+                   r"(catalyst|MacCatalyst|is-catalyst-binary|isiOSAppOnMac)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "platform_string",
+                   r"(targetEnvironment|isMac|iphone|ipad|isiOS|isMacCatalyst|UIDevice)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "ent_string",
+                   r"(entitlement|com\.apple\.private|SecTaskCopyValueForEntitlement)",
+                   max_anchors=16, evidence_label="string"),
+        StringRule("C", "bypass_string",
+                   r"(bypass|skip|non.?macos|exempt|legacy|compat)",
+                   max_anchors=12, evidence_label="string"),
+    ],
+    function_rules=[
+        StringRule("B", "platform_branch",
+                   r"(isCatalyst|isMac|isiOSAppOnMac|targetEnvironment)",
+                   max_anchors=12, evidence_label="function"),
+    ],
 )
