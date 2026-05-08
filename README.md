@@ -24,6 +24,8 @@ Your lab host can be named anything. In this repo, examples use `<lab-host>` and
 - `templates/findings-repo/` contains local project files such as `LAB_SAFETY.md`, `CORPUS.md`, `SCRIPTORIUM.md`, `CHRONICLE.md`, `INDEX.md`, `METRICS.md`, and `REPORTING.md`.
 - `scripts/` contains setup, sync, and smoke-test helpers.
 
+Future direction: the station is intended to grow into iOS reversing support after the macOS workflow is strong.
+
 ## Keep Vocabulary
 
 - **Keep** is the whole project environment: Cursor, project clone, lab host, skills, scripts, and durable project state.

@@ -44,6 +44,23 @@ ghidra-projects/
 re/
 findings-repo/
 
+# Local target planning/backlogs for private research queues.
+TARGET_QUEUE.md
+target-queue.md
+target-backlog.md
+target-backlog/
+
+# PoC scaffolding outputs - keep target-specific PoC code, harnesses, and chain
+# artifacts in private project clones, not the reusable template repo.
+pocs/
+poc/
+chains/
+
+# Apple opensource.apple.com cache for source-binary correlation.
+sources/apple/
+apple-sources/
+.apple-source-cache/
+
 # Keep placeholder directories in the starter template.
 !templates/
 !templates/findings-repo/
