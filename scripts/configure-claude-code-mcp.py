@@ -1,81 +1,84 @@
 #!/usr/bin/env python3
-"""Write or update Claude Code MCP entries for the Keep."""
+"""Register Claude Code MCP entries for the Keep via `claude mcp add-json`.
+
+Previously this script wrote to `~/.claude/settings.json` under a top-level
+`mcpServers` key. Claude Code does NOT read MCP servers from that file —
+the CLI-managed registry lives in `~/.claude.json` (user/local scope) or in
+a project-root `.mcp.json` (project scope). The supported way to register
+stdio servers is the `claude mcp add-json` CLI; this script shells out to it.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import shutil
+import subprocess
 import sys
-from pathlib import Path
 from typing import Any
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", default=os.environ.get("MACRE_MACHINE", "lab-host"), help="SSH alias for lab host")
+    parser.add_argument(
+        "--host",
+        default=os.environ.get("MACRE_MACHINE", "lab-host"),
+        help="SSH alias for lab host",
+    )
     parser.add_argument(
         "--remote-home",
         default=os.environ.get("MACRE_REMOTE_HOME", "/Users/<remote-user>"),
         help="Remote user's home directory",
     )
     parser.add_argument(
-        "--config",
-        type=Path,
-        default=Path.home() / ".claude/settings.json",
-        help="Claude Code settings path",
+        "--scope",
+        choices=("local", "user", "project"),
+        default="user",
+        help="Claude Code MCP config scope (default: user)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Print merged config without writing it",
-    )
-    parser.add_argument(
-        "--no-backup",
-        action="store_true",
-        help="Do not write a .bak copy before changing an existing config",
+        help="Print the `claude mcp add-json` invocations without running them",
     )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    config = load_config(args.config)
-    config.setdefault("mcpServers", {})
-    config["mcpServers"]["ghidra-mcp"] = ghidra_server(args.host, args.remote_home)
-    config["mcpServers"]["macre-vm-mcp"] = macre_server(args.host, args.remote_home)
 
-    rendered = json.dumps(config, indent=2, sort_keys=True) + "\n"
-    if args.dry_run:
-        print(rendered, end="")
-        return 0
+    if not args.dry_run and shutil.which("claude") is None:
+        print(
+            "ERROR: `claude` CLI not on PATH; install Claude Code first or run with --dry-run",
+            file=sys.stderr,
+        )
+        return 2
 
-    current = args.config.read_text(encoding="utf-8") if args.config.is_file() else ""
-    if current == rendered:
-        print(f"OK - Claude Code MCP config already up to date: {args.config}")
-        return 0
+    servers: dict[str, dict[str, Any]] = {
+        "ghidra-mcp": ghidra_server(args.host, args.remote_home),
+        "macre-vm-mcp": macre_server(args.host, args.remote_home),
+    }
 
-    args.config.parent.mkdir(parents=True, exist_ok=True)
-    if current and not args.no_backup:
-        backup = args.config.with_suffix(args.config.suffix + ".bak")
-        backup.write_text(current, encoding="utf-8")
-        print(f"OK - wrote backup: {backup}")
-    write_atomic(args.config, rendered)
-    print(f"OK - wrote Claude Code MCP config: {args.config}")
-    print("Restart Claude Code so the MCP server list refreshes.")
+    for name, spec in servers.items():
+        spec_json = json.dumps(spec)
+        cmd = ["claude", "mcp", "add-json", "-s", args.scope, name, spec_json]
+        if args.dry_run:
+            print("DRY-RUN:", " ".join(shell_quote(c) for c in cmd))
+            continue
+        result = subprocess.run(cmd, check=False)
+        if result.returncode != 0:
+            print(
+                f"ERROR: `claude mcp add-json` failed for {name} (exit {result.returncode})",
+                file=sys.stderr,
+            )
+            return result.returncode
+        print(f"OK - registered {name} at scope={args.scope}")
+
+    if not args.dry_run:
+        print("Restart Claude Code so the deferred-tool list refreshes.")
+        print("Verify with: claude mcp list")
     return 0
-
-
-def load_config(path: Path) -> dict[str, Any]:
-    if not path.is_file():
-        return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"ERROR: invalid JSON in {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise SystemExit(f"ERROR: {path} must contain a JSON object")
-    return data
 
 
 def ghidra_server(host: str, remote_home: str) -> dict[str, Any]:
@@ -108,10 +111,10 @@ def macre_server(host: str, remote_home: str) -> dict[str, Any]:
     }
 
 
-def write_atomic(path: Path, text: str) -> None:
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(text, encoding="utf-8")
-    tmp.replace(path)
+def shell_quote(value: str) -> str:
+    if not value or any(c in value for c in " '\"\\$`{}[]<>|&;*?#~"):
+        return "'" + value.replace("'", "'\\''") + "'"
+    return value
 
 
 if __name__ == "__main__":
