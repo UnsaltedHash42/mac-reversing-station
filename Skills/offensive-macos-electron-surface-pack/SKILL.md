@@ -10,6 +10,7 @@ trigger_phrases:
   - "asar"
   - "preload script"
   - "electron ipc"
+  - "extract asar"
 ---
 
 # Electron Surface Pack
@@ -26,10 +27,28 @@ trigger_phrases:
 ## Workflow
 
 1. Read the dossier and Electron indicators.
-2. Identify packaged entrypoints, preload scripts, IPC boundaries, native modules, and update channels.
-3. Check security posture: context isolation, sandbox, Node integration, exposed bridge APIs, fuses, and ASAR integrity when evidence is available.
-4. Map risky shapes to binary or packaged-artifact anchors before creating candidate rows.
-5. Route LLDB or runtime work only after a specific static anchor exists.
+2. Extract `app.asar` with `scripts/extract-asar.sh` (see "Extracting the asar" below). Upstream `asar` / `@electron/asar` ENOENT-bail on the first missing unpacked file, leaving an empty extract dir; the wrapper substitutes empty buffers and emits a manifest.
+3. Identify packaged entrypoints, preload scripts, IPC boundaries, native modules, and update channels.
+4. Check security posture: context isolation, sandbox, Node integration, exposed bridge APIs, fuses, and ASAR integrity when evidence is available.
+5. Map risky shapes to binary or packaged-artifact anchors before creating candidate rows.
+6. Route LLDB or runtime work only after a specific static anchor exists.
+
+## Extracting the asar
+
+```bash
+scripts/extract-asar.sh \
+    <Bundle>/Contents/Resources/app.asar \
+    <out-dir>
+```
+
+Reads `<asar>.unpacked/` siblings when the asar header marks a file
+`unpacked: true`. If the unpacked file is missing, writes an empty buffer
+in its place rather than aborting, and records the path in
+`<out-dir>/.asar-extract-manifest.json` under `substitutedEmpty[]`.
+
+Pure Node, no npm install. Tested on Node 20.15. PASS-001 baseline:
+14174 files, 420 inlined + 13754 copied-from-unpacked on Rocket.Chat
+4.13.0.
 
 ## Output Shape
 
