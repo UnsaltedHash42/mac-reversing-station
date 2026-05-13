@@ -36,6 +36,7 @@
 #   2  missing required flag
 #   3  binary not found
 #   4  ghidra/pyghidra launch missing
+#   5  disk-preflight tripwire (override with MACRE_SKIP_DISK_PREFLIGHT=1)
 
 set -euo pipefail
 
@@ -61,12 +62,40 @@ done
 
 for var in BINARY PROJECT_NAME TARGET_ID SCRIPT_NAME OUT_DIR; do
     if [[ -z "${!var}" ]]; then
-        echo "missing --${var,,}" >&2; exit 2
+        # ${var,,} is Bash 4+; macOS still ships Bash 3.2.
+        flag=$(echo "$var" | tr '[:upper:]_' '[:lower:]-')
+        echo "missing --${flag}" >&2; exit 2
     fi
 done
 
 if [[ ! -f "$BINARY" ]]; then
     echo "binary not found: $BINARY" >&2; exit 3
+fi
+
+# Disk preflight. PASS-001's tripwire was 5 GB; below that, ENOSPC mid-analysis
+# leaves a corrupt .gpr that you have to nuke + reimport. Refuse if free disk
+# is below max(5 GB, 2x binary size). Override via MACRE_SKIP_DISK_PREFLIGHT=1.
+if [[ -z "${MACRE_SKIP_DISK_PREFLIGHT:-}" ]]; then
+    BIN_SIZE_BYTES=$(stat -f %z "$BINARY" 2>/dev/null || stat -c %s "$BINARY" 2>/dev/null || echo 0)
+    MIN_FREE_BYTES=$((5 * 1024 * 1024 * 1024))
+    DOUBLE_BIN=$((BIN_SIZE_BYTES * 2))
+    if [[ $DOUBLE_BIN -gt $MIN_FREE_BYTES ]]; then
+        REQUIRED=$DOUBLE_BIN
+    else
+        REQUIRED=$MIN_FREE_BYTES
+    fi
+    # df -k -> 1024-byte blocks in column 4 (Avail). Resolve disk for OUT_DIR's parent.
+    OUT_PARENT="$(dirname "$OUT_DIR")"
+    [[ -d "$OUT_PARENT" ]] || OUT_PARENT="$HOME"
+    FREE_KB=$(df -k "$OUT_PARENT" 2>/dev/null | awk 'NR==2 {print $4}')
+    FREE_BYTES=$(( ${FREE_KB:-0} * 1024 ))
+    if [[ $FREE_BYTES -lt $REQUIRED ]]; then
+        printf 'ERROR: insufficient free disk on %s\n' "$OUT_PARENT" >&2
+        printf '  free=%d MiB, required=%d MiB (max(5GB, 2x binary size %d MiB))\n' \
+            $((FREE_BYTES / 1048576)) $((REQUIRED / 1048576)) $((BIN_SIZE_BYTES / 1048576)) >&2
+        printf '  override with MACRE_SKIP_DISK_PREFLIGHT=1\n' >&2
+        exit 5
+    fi
 fi
 
 GHIDRA_HOME="${MACRE_GHIDRA_HOME:-$HOME/Applications/ghidra_12.0.4_PUBLIC}"
