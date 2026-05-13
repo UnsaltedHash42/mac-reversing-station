@@ -161,6 +161,63 @@ host (snapshot taken first, per LAB_SAFETY.md):
 
 ---
 
+## `open-existing-docstring.patch`
+
+**Problem.** The `project.program.open_existing` MCP tool's description
+(`server.py:283`) reads "Open a program from a named existing Ghidra
+project and return a new session." The implementation in
+`backend.session_open_existing` accepts `program_name` and `program_path`
+as keyword arguments with default `None` (so the tool's input schema
+marks both *optional*), but the impl raises
+`GhidraBackendError("program_name or program_path is required")` at
+runtime if neither is set. From the client's side this looks like two
+optional fields that are nonetheless mandatory in some hidden way; the
+only signal is the runtime error after the call has already been
+issued. Closes SHAKEDOWN_NOTES.md item #22.
+
+**Fix.** Extend the description string to state the constraint
+explicitly: "Open a program from a named existing Ghidra project and
+return a new session. Requires `program_name` or `program_path` to
+identify which program inside the project to open; both are listed as
+optional in the schema but exactly one must be supplied." One-line
+edit; no impl changes. The runtime error remains — the patch only
+closes the documentation gap so the MCP client's tool catalog conveys
+the constraint before the call.
+
+**Where it lives.** Same place as the other patches: lab host editable
+install at `/Users/<remote-user>/tools/ghidra-headless-mcp/`. Apply
+with `git apply <patch>` after the upstream pin is checked out.
+Touches one line in `ghidra_headless_mcp/server.py`.
+
+**Applies against.** Pinned commit
+`b9c491a6383dbc68c581e7fed16341ac47e7faba`. Stacks cleanly on top of
+`pyghidra-script-stdout.patch` and `pid-tagging-and-shutdown.patch`
+(disjoint files: those touch `backend.py` and `cli.py`; this touches
+`server.py`). Apply order is irrelevant.
+
+**Operator actions.**
+1. Auto-applied by `scripts/install-ghidra-host.sh --install` via the
+   patch-stack rsync + dual-probe apply loop (PR #13). No manual step
+   on a fresh provisioning.
+2. Candidate for upstreaming to `mrphrazer/ghidra-headless-mcp` — the
+   schema/description mismatch is generic and not station-specific.
+   The fully correct upstream fix is to express
+   "exactly one of `program_name` / `program_path`" in the input
+   schema (e.g. via Pydantic discriminator or oneOf) so the MCP client
+   can validate before the call — but that's a larger change to the
+   server's tool-spec generator. The docstring patch is the minimum
+   fix that closes the immediate confusion.
+3. If upstreamed, remove this patch and bump the commit pin in
+   `scripts/install-ghidra-host.sh`.
+
+**Verification.** After apply, the MCP client's tool catalog for
+`project.program.open_existing` should show the extended description
+on the next handshake. No runtime behavior change — the impl still
+raises the same error if both arguments are omitted. The patch's value
+is purely in the discoverability of the constraint.
+
+---
+
 ## SSH-fallback wrapper: `scripts/ghidra-scan.sh`
 
 Not a patch to `ghidra-headless-mcp` itself, but a companion helper for
