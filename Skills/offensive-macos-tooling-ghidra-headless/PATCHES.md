@@ -218,6 +218,95 @@ is purely in the discoverability of the constraint.
 
 ---
 
+## `refuse-universal-macho.patch`
+
+**Problem.** When the MCP path opens a universal Mach-O, Ghidra's loader
+silently picks one slice and the caller has no signal that the other
+slices weren't scanned. PR #14 fixed this for the SSH path
+(`scripts/ghidra-scan.sh` auto-iterates slices); the MCP path had no
+equivalent. The SHAKEDOWN #8 probe confirmed: `program.open` against
+`/bin/echo` (universal `x86_64+arm64e`) returned
+`language_id: x86:LE:64:default` with no warning. An x86_64-only or
+arm64-only bug in the unscanned slice slips through. Closes
+SHAKEDOWN_NOTES.md item #35.
+
+**Fix.** Detect Mach-O fat magic (`0xCAFEBABE` for 32-bit fat,
+`0xCAFEBABF` for 64-bit fat) at the earliest unambiguous point in both
+`session_open` (path-based) and `session_open_bytes` (uploaded blob).
+Raise `GhidraBackendError` with a message that names the path and
+suggests the resolution: pre-slice with `lipo -thin <arch> <in> <out>`
+and pass the slice path, or use `scripts/ghidra-scan.sh` which
+auto-iterates slices. Same heuristic `lipo -info` uses (first 4 bytes
+in big-endian).
+
+**Where it lives.** Lab host editable install at
+`/Users/<remote-user>/tools/ghidra-headless-mcp/`. Apply with
+`git apply <patch>` after the upstream pin is checked out. Touches
+~9 lines in `session_open` (after `_ensure_started()` + path-existence
+check) and ~5 lines in `session_open_bytes` (after base64 decode).
+
+**Applies against.** Pinned commit
+`b9c491a6383dbc68c581e7fed16341ac47e7faba`. Stacks cleanly on top of
+the other three patches (`pyghidra-script-stdout.patch`,
+`pid-tagging-and-shutdown.patch`, `open-existing-docstring.patch`) —
+disjoint regions in `backend.py` and a different file (`server.py`)
+for the docstring patch.
+
+**Operator actions.**
+1. Auto-applied by `scripts/install-ghidra-host.sh --install` via the
+   patch-stack rsync + dual-probe apply loop (PR #13). No manual step
+   on a fresh provisioning.
+2. **Restart any long-lived MCP processes** after install — the
+   editable install only re-reads `backend.py` on process start; PIDs
+   running before the install keep the unpatched code cached. Kill
+   stale MCP PIDs and let the operator's MCP transport reconnect.
+3. Carrying-our-own-version policy: this patch is candidate for
+   upstreaming to `mrphrazer/ghidra-headless-mcp` — the silent-slice
+   behavior is a generic problem, not station-specific. The fully
+   correct upstream design is to detect fat Mach-Os and either iterate
+   (returning multiple session ids) or accept an `arch` parameter; the
+   downstream fix is the minimum-viable refuse-loudly variant.
+
+**Why refuse instead of auto-iterate.** The tool returns a single
+`session_id`. Auto-iteration would change the return shape (list of
+session ids) and ripple through every caller's expectations. Refuse
+keeps the schema unchanged and pushes the slice choice to the caller —
+who may want only one slice anyway (e.g. `arm64e` on Apple Silicon for
+modern-binary work). The error message names both escape hatches.
+
+**Why magic-byte read instead of shellout to `lipo`.** No host-tool
+dependency; works on any platform; no fork overhead. Mach-O fat magic
+is `0xCAFEBABE` (32-bit) or `0xCAFEBABF` (64-bit) in big-endian on
+disk. Same heuristic `lipo -info` uses internally.
+
+**Java-class-magic collision note.** `0xCAFEBABE` also collides with
+Java `.class` file magic. Defensive implementations sanity-check
+`nfat_arch < 32` to disambiguate. The lab tools collectively will not
+see this collision in practice — Ghidra's macOS-target workflow is
+the only consumer, and a `.class` file routed through a Mach-O loader
+is already a misuse the loader would reject for unrelated reasons.
+The patch does not add the sanity-check, matching `lipo -info`'s
+behavior of declaring fat on bare magic match.
+
+**Verification.** Runtime probed against the patched lab-host backend
+(probe sequence in `~/.venvs/ghidra-headless-mcp/bin/python` with
+`GHIDRA_INSTALL_DIR` + `JAVA_HOME` exported, then `cli.build_backend`
+on the patched module):
+
+1. `session_open("/bin/echo")` (real universal Mach-O on macOS) →
+   raises with the expected message including the path.
+2. `session_open_bytes(<base64 of 0xCAFEBABE + zeros>)` → raises with
+   the bytes-variant message. Same for `0xCAFEBABF`.
+3. `session_open_bytes(<base64 of 0xCFFAEDFE + zeros>)` (thin 64-bit
+   Mach-O magic) → gate lets it past; downstream Ghidra raises
+   `LoadException: No load spec found` (expected — the rest of the
+   header is zeros). Negative control proves the gate is selective.
+
+After successful application, restart the MCP process so the in-memory
+Python module picks up the patched function bodies.
+
+---
+
 ## SSH-fallback wrapper: `scripts/ghidra-scan.sh`
 
 Not a patch to `ghidra-headless-mcp` itself, but a companion helper for
