@@ -45,7 +45,7 @@ Do not invent new class names in a findings repo. If a target does not fit an ex
 
 ## Workflow
 
-1. Start from the target inventory in `CORPUS.md` or the target map under `findings/analysis/`.
+1. Start from the target inventory in `CORPUS.md` or the target map under `findings/analysis/`. Read the `Trigger signals` section if present — `offensive-macos-bundle-intake` writes one row per entitlement-driven hunt-skill match (e.g., `application-groups → offensive-macos-hunt-keychain-access-group`). Trigger signals get the corresponding hunt-skill onto the hypothesis list before family-label classification, since a single entitlement can imply a higher-priority surface than the family label suggests.
 2. Identify observed surfaces before choosing a family label:
    - XPC services, MachServices, helpers, launchd jobs, updater components.
    - Privacy/TCC strings, scoped bookmarks, sandbox/app-group stores.
