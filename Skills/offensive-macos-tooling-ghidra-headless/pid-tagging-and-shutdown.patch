@@ -1,5 +1,5 @@
 diff --git a/ghidra_headless_mcp/backend.py b/ghidra_headless_mcp/backend.py
-index cbf27bb..edcf04e 100644
+index cbf27bb..b4a8e7d 100644
 --- a/ghidra_headless_mcp/backend.py
 +++ b/ghidra_headless_mcp/backend.py
 @@ -2,6 +2,7 @@
@@ -111,7 +111,7 @@ index cbf27bb..edcf04e 100644
 +            self._executor.shutdown(wait=False)
 +        self._remove_sidecar()
 +
-+    def install_signal_handlers(self) -> None:
++    def _install_signal_handlers(self) -> None:
 +        """Wire SIGTERM/SIGINT to shutdown(). Call once from the entry point."""
 +
 +        def _handler(signum, _frame):
@@ -126,7 +126,7 @@ index cbf27bb..edcf04e 100644
 +            with suppress(ValueError, OSError):
 +                signal.signal(sig, _handler)
 diff --git a/ghidra_headless_mcp/cli.py b/ghidra_headless_mcp/cli.py
-index cf764fa..6fb3a5d 100644
+index cf764fa..12b4137 100644
 --- a/ghidra_headless_mcp/cli.py
 +++ b/ghidra_headless_mcp/cli.py
 @@ -83,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
@@ -135,7 +135,7 @@ index cf764fa..6fb3a5d 100644
      backend = build_backend(args)
 +    # Wire signal handlers + sidecar cleanup so a crashed/SIGTERM'd MCP
 +    # releases Ghidra project locks instead of leaving them stale.
-+    install = getattr(backend, "install_signal_handlers", None)
++    install = getattr(backend, "_install_signal_handlers", None)
 +    if callable(install):
 +        install()
      server = SimpleMcpServer(backend)

@@ -80,11 +80,16 @@ if [[ -d "$SIDECAR_DIR" ]]; then
         SIDECAR_COUNT=$((SIDECAR_COUNT + 1))
         pid="$(basename "$sidecar" .json)"
         if kill -0 "$pid" 2>/dev/null; then
-            started=$(awk -F'[":,]' '/"started_at"/ { for (i=1;i<=NF;i++) if ($i ~ /^[0-9]+\.[0-9]+$/ || $i ~ /^[0-9]+$/) { print $i; exit } }' "$sidecar")
+            started=$(grep -oE '"started_at":[[:space:]]*[0-9]+(\.[0-9]+)?' "$sidecar" | grep -oE '[0-9]+(\.[0-9]+)?$' | head -1)
             cs_id=$(awk -F'"' '/"claude_code_session_id"/ { print $4 }' "$sidecar")
             now=$(date +%s)
-            age_min=$(( (now - ${started%%.*}) / 60 ))
-            echo "  pid=$pid LIVE  age=${age_min}m  claude_session=${cs_id:-<unset>}"
+            if [[ -n "$started" ]]; then
+                age_min=$(( (now - ${started%%.*}) / 60 ))
+                age_str="${age_min}m"
+            else
+                age_str="?"
+            fi
+            echo "  pid=$pid LIVE  age=${age_str}  claude_session=${cs_id:-<unset>}"
             # Pull lockfile lines as plain text — extract everything between "lockfile":"  and "
             grep -oE '"lockfile":[[:space:]]*"[^"]*"' "$sidecar" | sed 's/.*"lockfile":[[:space:]]*"//; s/"$//' | while IFS= read -r lock; do
                 [[ -n "$lock" ]] || continue

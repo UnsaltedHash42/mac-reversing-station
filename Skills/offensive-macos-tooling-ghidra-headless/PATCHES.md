@@ -75,7 +75,7 @@ SHAKEDOWN_NOTES.md items #24/#25.
 1. A **shutdown method** that closes every open session (releasing each
    project's Ghidra lock via existing `session_close` semantics) and
    tears down the executor. Wired to `atexit` and (via
-   `install_signal_handlers`) to `SIGTERM`/`SIGINT`. The signal handler
+   `_install_signal_handlers`) to `SIGTERM`/`SIGINT`. The signal handler
    re-raises the default after cleanup so the process actually exits.
 2. A **sidecar JSON file** at `~/.ghidra-headless-mcp/sessions/<pid>.json`
    updated on backend init, every session open, and every session close.
@@ -99,7 +99,7 @@ SHAKEDOWN_NOTES.md items #24/#25.
    }
    ```
 
-3. A **`cli.main` hook** that calls `backend.install_signal_handlers()`
+3. A **`cli.main` hook** that calls `backend._install_signal_handlers()`
    right after `build_backend(args)` so the cleanup runs on `kill -TERM`
    or Ctrl-C, not just on clean exits.
 
@@ -133,6 +133,31 @@ imports (`atexit`, `signal`) are added by the patch.
 touch disjoint regions (`__init__`, end-of-class, and `cli.main` for
 this one; the `ghidra_script` method for the stdout one). Apply order
 is irrelevant; either can be applied first.
+
+**Why `_install_signal_handlers` is name-private.** The MCP server
+introspects `GhidraBackend`'s public methods at startup (in
+`server._build_backend_tool_specs`) and refuses to start if any public
+method is missing from `_BACKEND_TOOL_NAME_MAP`. A public
+`install_signal_handlers` would crash the server. The leading
+underscore tells the introspector to skip it; `cli.py` calls it
+through `getattr(backend, "_install_signal_handlers", None)` for
+backwards-compatibility with unpatched backends.
+
+**Verification.** End-to-end SIGTERM cycle was exercised on the lab
+host (snapshot taken first, per LAB_SAFETY.md):
+
+1. Apply both patches on a clean upstream tree (verified with
+   `git apply --check`).
+2. Start MCP via `~/bin/ghidra-mcp-launch` with stdin held open via a
+   FIFO (so the stdio loop doesn't EOF-exit).
+3. Confirm sidecar appears at `~/.ghidra-headless-mcp/sessions/<pid>.json`
+   with PID, started_at, claude_code_session_id (if env set), and an
+   empty open_projects list.
+4. Run `scripts/lab-health.sh` from the workstation; "live MCP sessions"
+   section populates.
+5. Send `kill -TERM <pid>`; sidecar disappears within ~1 second; PID
+   gone.
+6. Run `lab-health.sh` again; clean state, no stale entries.
 
 ---
 
