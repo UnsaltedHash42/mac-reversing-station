@@ -13,6 +13,9 @@ trigger_phrases:
   - "primary lab host"
   - "crash-test"
   - "Intel baseline"
+  - "VM sizing"
+  - "how much RAM"
+  - "Ghidra heap"
 ---
 
 # macOS Lab Roster
@@ -46,6 +49,39 @@ The primary host is the concrete floor. The other roles are checklist-driven add
 | crash-test | panics, fuzzing, daemon DoS, unsafe harnesses | long-lived notes or single source of truth |
 | cross-platform | verifying Apple Silicon generation drift | first-run destructive unknowns |
 | intel-baseline | checking x86_64/macOS 14-style behavior | Apple Silicon mitigation conclusions |
+
+## VM Sizing
+
+Resource recommendations by role. Source: PASS-001 (Rocket.Chat 4.13.0,
+2026-05-11) — a 4 GB / 2-core VM with `-Xmx12g` swap-thrashed for 2+ hours
+on a 177 MB Electron Framework before being killed; 16 GB / 8-core with
+`-Xmx10g` ran clean (RSS peaked ~4 GB, zero swap).
+
+| Role | vCPU | RAM | Disk | Rationale |
+|------|------|-----|------|-----------|
+| smoke-test / small binaries | 2 | 4 GB | 60 GB | Main execs and helpers under ~10 MB. Not for Apple frameworks or Electron bodies. |
+| primary (Electron, consumer apps) | 8 | 16 GB | 256 GB | Survives 100-200 MB Mach-Os. Headroom for persistent projects across 5-10 targets. |
+| primary (Apple framework + dyld cache extraction) | 8 | 32 GB | 512 GB | Apple framework analyses need more heap; cache extracts eat disk fast. |
+| crash-test | 4 | 8 GB | 128 GB | Dynamic-only; never runs Ghidra. Runs lldb, dtrace, sample PoCs. |
+
+### Heap sizing rule
+
+**`-Xmx = physical_ram_gb - 6`.** The 6 GB budget covers OS + MCP servers
++ APFS compressor + headroom for bursts. On a 16 GB VM, `-Xmx10g`. On a
+32 GB VM, `-Xmx24g`.
+
+This is encoded in `scripts/ghidra-scan.sh` as a default + comment on
+`HEAP_SIZE`. Override with `MACRE_GHIDRA_HEAP=<N>g`.
+
+### Cores
+
+Ghidra's serial analyzer phases (decompile-switch-analyzer, function-body
+repair, data-type-archive application) only use 1 core; parallel phases
+(function discovery, string walkers, propagation) scale. **4 cores is the
+sweet spot for a single-binary workflow.** 8 cores earns its keep when
+you fan out: concurrent Helper sweeps, lldb attach during DTrace capture,
+parallel Ghidra projects on the same host. Default to 8 unless the VM
+budget is tight.
 
 ## Setup Checklist For A New Machine
 
