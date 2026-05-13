@@ -1,0 +1,11 @@
+--- a/ghidra_headless_mcp/server.py
++++ b/ghidra_headless_mcp/server.py
+@@ -280,7 +280,7 @@
+     "project.files.list": "List project files with folder, content-type, query, and pagination filters.",
+     "project.folders.list": "List project folders, optionally walking the tree recursively.",
+     "project.program.open": "Open a program already stored in the current project and return a new session.",
+-    "project.program.open_existing": "Open a program from a named existing Ghidra project and return a new session.",
++    "project.program.open_existing": "Open a program from a named existing Ghidra project and return a new session. Requires `program_name` or `program_path` to identify which program inside the project to open; both are listed as optional in the schema but exactly one must be supplied.",
+     "project.search.programs": "Search program files in the project by name or path.",
+     "transaction.begin": "Begin an explicit undo transaction for grouped changes.",
+     "transaction.commit": "Commit the active transaction so its changes become undoable.",
