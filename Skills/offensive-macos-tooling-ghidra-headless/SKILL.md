@@ -110,6 +110,19 @@ Confirm exact tool schemas with `tools/list` because the MCP server is pinned so
 - Swift and ObjC names may be partial or mangled. Pair Ghidra results with `nm`, `strings`, `class-dump`, or runtime probes.
 - Script tools execute powerful code inside the analysis process. Keep scripts read-only unless the task explicitly requires mutation.
 - `bethington/ghidra-mcp` advertises more GUI/plugin features, but its headless HTTP server is not the station's active path until its startup crash is resolved.
+- **Crashed-session zombies hold project locks.** If a prior Claude Code session exited while its `ghidra-headless-mcp` subprocess was holding a `.lock` on a Ghidra project, the next session's `program.open` / `project.program.open_existing` will fail with `LockException`. Run `scripts/lab-health.sh` from the workstation to identify orphan lockfiles + stale sidecar PIDs. Do **not** kill ghidra-headless-mcp PIDs by hand from `ps` output — both live and zombie processes look identical there. The sidecar JSON at `~/.ghidra-headless-mcp/sessions/<pid>.json` is the disambiguator.
+
+## When A Session Crashes
+
+```bash
+# From the workstation:
+scripts/lab-health.sh                  # report only
+scripts/lab-health.sh --remove-stale   # rm dead-PID sidecars (safe)
+```
+
+The script reports five sections: host facts, live MCP sessions (PID + open project + claimed lockfile), stale sidecars, orphan project lockfiles, and a `ps` cross-check. Exit code is 1 if any orphan locks or stale sidecars exist.
+
+The `pid-tagging-and-shutdown.patch` carried in `PATCHES.md` is what writes the sidecar JSON and installs SIGTERM/SIGINT handlers that release locks on shutdown. Without that patch, `lab-health.sh` only sees orphan lockfiles via section 4 — not the live sidecar map.
 
 ## Micro-Exercise
 

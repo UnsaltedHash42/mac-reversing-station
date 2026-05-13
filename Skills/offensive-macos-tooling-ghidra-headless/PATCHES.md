@@ -59,6 +59,83 @@ still gets lost. Carry both together.
 
 ---
 
+## `pid-tagging-and-shutdown.patch`
+
+**Problem.** PASS-001 stopped because a prior Claude Code session crashed
+while its `ghidra-headless-mcp` subprocess held an exclusive `.lock` on a
+Ghidra project. The zombie MCP process kept the lock; the next session's
+`project.program.open_existing` failed with `LockException` even with
+`read_only=true`. Worse, when the operator tried to clean up, both live
+and zombie MCPs looked identical in `ps` output and the wrong PID got
+killed, disconnecting the active MCP mid-session. Closes
+SHAKEDOWN_NOTES.md items #24/#25.
+
+**Fix.** Three additions to `GhidraBackend`:
+
+1. A **shutdown method** that closes every open session (releasing each
+   project's Ghidra lock via existing `session_close` semantics) and
+   tears down the executor. Wired to `atexit` and (via
+   `install_signal_handlers`) to `SIGTERM`/`SIGINT`. The signal handler
+   re-raises the default after cleanup so the process actually exits.
+2. A **sidecar JSON file** at `~/.ghidra-headless-mcp/sessions/<pid>.json`
+   updated on backend init, every session open, and every session close.
+   Schema:
+
+   ```json
+   {
+     "pid": 12345,
+     "started_at": 1715616000.0,
+     "claude_code_session_id": "<from CLAUDE_CODE_SESSION_ID env>",
+     "ghidra_install_dir": "/Users/szeth/Applications/ghidra_12.0.4_PUBLIC",
+     "open_projects": [
+       {
+         "session_id": "...",
+         "project_location": "/Users/szeth/ghidra-projects",
+         "project_name": "rocket-chat-analysis",
+         "lockfile": "/Users/szeth/ghidra-projects/rocket-chat-analysis.lock",
+         "program_name": "Electron Framework"
+       }
+     ]
+   }
+   ```
+
+3. A **`cli.main` hook** that calls `backend.install_signal_handlers()`
+   right after `build_backend(args)` so the cleanup runs on `kill -TERM`
+   or Ctrl-C, not just on clean exits.
+
+The reader half is `scripts/lab-health.sh`. It walks the sidecar dir,
+cross-references each PID with `kill -0`, surfaces stale sidecars, and
+flags orphan `.lock` files in `~/ghidra-projects/` that no live sidecar
+claims (the PASS-001 stop condition).
+
+**Where it lives.** Same place as the stdout patch: lab host editable
+install at `/Users/<remote-user>/tools/ghidra-headless-mcp/`. Apply with
+`patch -p1 < pid-tagging-and-shutdown.patch` after the upstream pin is
+checked out. Touches +84 LOC in `backend.py` and +5 LOC in `cli.py`.
+
+**Applies against.** Pinned commit
+`b9c491a6383dbc68c581e7fed16341ac47e7faba`. Stacks cleanly on top of
+`pyghidra-script-stdout.patch` (different code regions). Required
+imports (`atexit`, `signal`) are added by the patch.
+
+**Operator actions.**
+1. Reapply on any new lab host after `scripts/install-ghidra-host.sh`
+   clones the upstream pin, alongside the stdout patch.
+2. Verify by running `scripts/lab-health.sh` from the workstation; the
+   "live MCP sessions" section should populate with PID + open
+   projects.
+3. Test the shutdown path: with one MCP session open, send SIGTERM to
+   the MCP PID; the lockfile and sidecar should both disappear.
+4. Carrying-our-own-version policy: this patch is not slated for
+   upstream. The downstream stack is the station's source of truth.
+
+**Interaction with `pyghidra-script-stdout.patch`.** The two patches
+touch disjoint regions (`__init__`, end-of-class, and `cli.main` for
+this one; the `ghidra_script` method for the stdout one). Apply order
+is irrelevant; either can be applied first.
+
+---
+
 ## SSH-fallback wrapper: `scripts/ghidra-scan.sh`
 
 Not a patch to `ghidra-headless-mcp` itself, but a companion helper for
