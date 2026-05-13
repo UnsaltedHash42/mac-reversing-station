@@ -7,11 +7,16 @@
 #   minutes to hours on large binaries). One project per (target, slice)
 #   on the lab host; subsequent scans of the same binary reuse the DB.
 # - Uses pyghidra_launcher.py -H so @runtime PyGhidra scripts load.
-# - Universal Mach-Os should be pre-sliced with `lipo -thin <arch>` before
-#   being passed here. Headless analyzeHeadless has no flag for slice
-#   selection on universal Mach-Os; pre-slicing is the only correct path.
-# - Project dir naming: ~/ghidra-projects/<project-name>/<target-id>-<slice>
-#   Callers choose the names; we do not synthesize.
+# - Universal Mach-Os: when the input is a fat binary, scan every slice
+#   serially. analyzeHeadless has no flag for slice selection, so we
+#   `lipo -thin <arch>` into a sibling .slices-<target-id>/ dir and run
+#   the script once per slice. PR #13's heap-vs-RAM preflight gates each
+#   slice; serial (not parallel) so two slices' Ghidra projects never
+#   pin the heap budget at once. Pre-sliced inputs (`lipo -info` reports
+#   "Non-fat file:") follow the single-pass path unchanged.
+# - Project dir naming: ~/ghidra-projects/<project-name>/<target-id>.gpr
+#   for single-arch; <target-id>-<arch>.gpr per slice on universal inputs
+#   (synthesized — operator passes the bare <target-id>).
 # - Script stdout goes to <out-dir>/<script>.stdout.log, stderr to
 #   <out-dir>/<script>.stderr.log. A cleaned <script>.tsv (PyGhidra
 #   `INFO ... (GhidraScript)` wrappers stripped) is also emitted, suitable
@@ -41,6 +46,10 @@
 #   4  ghidra/pyghidra launch missing
 #   5  disk-preflight tripwire (override with MACRE_SKIP_DISK_PREFLIGHT=1)
 #   6  heap-vs-RAM preflight tripwire (override with MACRE_SKIP_RAM_PREFLIGHT=1)
+#   7  lipo failure on a universal binary (slice extraction)
+# When the input is universal, the exit code is the worst of the per-slice
+# scan rcs (0 only if all slices succeeded). Slice rcs are also surfaced in
+# the trailer line so the operator can see which slice failed.
 
 set -euo pipefail
 
@@ -159,56 +168,103 @@ PROJECTS_ROOT="${MACRE_GHIDRA_PROJECTS_ROOT:-$HOME/ghidra-projects}"
 PROJECT_DIR="$PROJECTS_ROOT/$PROJECT_NAME"
 mkdir -p "$PROJECT_DIR" "$OUT_DIR"
 
-LOG_STDOUT="$OUT_DIR/${SCRIPT_NAME%.py}.stdout.log"
-LOG_STDERR="$OUT_DIR/${SCRIPT_NAME%.py}.stderr.log"
+# run_one_scan <binary-path> <target-id> <log-suffix>
+# log-suffix is "" for single-arch (logs go to <script>.stdout.log) or
+# "-<arch>" for per-slice runs (logs go to <script>-<arch>.stdout.log).
+# Sets RC to the analyzeHeadless exit code; emits a cleaned .tsv too.
+run_one_scan() {
+    local one_binary="$1"
+    local one_target_id="$2"
+    local one_suffix="$3"
+    local log_stdout="$OUT_DIR/${SCRIPT_NAME%.py}${one_suffix}.stdout.log"
+    local log_stderr="$OUT_DIR/${SCRIPT_NAME%.py}${one_suffix}.stderr.log"
+    local log_tsv="$OUT_DIR/${SCRIPT_NAME%.py}${one_suffix}.tsv"
 
-# Decide whether this is first import or a re-scan of an existing project.
-EXISTING_GPR="$PROJECT_DIR/$TARGET_ID.gpr"
-if [[ -f "$EXISTING_GPR" ]]; then
-    # Reuse analyzed DB. -process picks the existing imported program.
-    # Match by the binary's basename so -process finds the right entry.
-    BIN_BASENAME="$(basename "$BINARY")"
-    MODE_ARGS=(-process "$BIN_BASENAME" -noanalysis)
-    RUN_MODE="reuse"
-else
-    # First run: import + analyze + script.
-    MODE_ARGS=(-import "$BINARY")
-    RUN_MODE="import"
+    local existing_gpr="$PROJECT_DIR/$one_target_id.gpr"
+    local mode_args run_mode
+    if [[ -f "$existing_gpr" ]]; then
+        # Reuse analyzed DB. -process matches the basename of the prior import.
+        mode_args=(-process "$(basename "$one_binary")" -noanalysis)
+        run_mode="reuse"
+    else
+        mode_args=(-import "$one_binary")
+        run_mode="import"
+    fi
+
+    local script_args_arr=()
+    if [[ -n "$SCRIPT_ARGS" ]]; then
+        # shellcheck disable=SC2206
+        script_args_arr=($SCRIPT_ARGS)
+    fi
+
+    local start
+    start=$(date +%s)
+    echo "[ghidra-scan] mode=$run_mode project=$PROJECT_DIR/$one_target_id script=$SCRIPT_NAME" >&2
+
+    # NB: no -readOnly. We want the analyzed DB persisted for future scans.
+    # Use pyghidra_launcher.py -H so @runtime PyGhidra scripts are honored.
+    # Don't let `set -e` short-circuit on a non-zero script exit -- we still
+    # want to emit the cleaned TSV from whatever stdout was captured.
+    set +e
+    "$VENV_PY" "$LAUNCHER" "$GHIDRA_HOME" -H \
+        "$PROJECT_DIR" "$one_target_id" \
+        "${mode_args[@]}" \
+        -scriptPath "$SCRIPT_DIR" \
+        -postScript "$SCRIPT_NAME" ${script_args_arr[@]+"${script_args_arr[@]}"} \
+        > "$log_stdout" 2> "$log_stderr"
+    RC=$?
+    set -e
+
+    # Emit a cleaned .tsv alongside the raw .stdout.log. PyGhidra wraps each
+    # println call as `INFO  <script>.py> <line> (GhidraScript)`; strip the
+    # prefix and trailing tag so the file pipes cleanly into triage.py without
+    # per-call sed. Best-effort: failures here do not change RC.
+    if [[ -s "$log_stdout" ]]; then
+        sed -E 's/^INFO  [^>]+> //; s/ \(GhidraScript\) +$//' "$log_stdout" > "$log_tsv" || \
+            echo "[ghidra-scan] WARN: failed to emit cleaned tsv at $log_tsv" >&2
+    fi
+
+    local end
+    end=$(date +%s)
+    echo "[ghidra-scan] exit=$RC elapsed=$((end-start))s stdout=$log_stdout stderr=$log_stderr tsv=$log_tsv" >&2
+}
+
+# Universal-Mach-O detection. lipo prints either:
+#   Architectures in the fat file: <path> are: x86_64 arm64e
+#   Non-fat file: <path> is architecture: arm64
+# When lipo is unavailable (Linux lab host), fall back to single-pass.
+ARCHES=()
+if command -v lipo >/dev/null 2>&1; then
+    LIPO_OUT="$(lipo -info "$BINARY" 2>/dev/null || true)"
+    if [[ "$LIPO_OUT" == "Architectures in the fat file:"* ]]; then
+        # `... are: <a> <b> ...` — everything after "are: " is the arch list.
+        ARCH_LIST="${LIPO_OUT##*are: }"
+        # shellcheck disable=SC2206
+        ARCHES=($ARCH_LIST)
+    fi
 fi
 
-START=$(date +%s)
-echo "[ghidra-scan] mode=$RUN_MODE project=$PROJECT_DIR/$TARGET_ID script=$SCRIPT_NAME" >&2
-
-# NB: no -readOnly. We want the analyzed DB persisted for future scans.
-# Use pyghidra_launcher.py -H so @runtime PyGhidra scripts are honored.
-SCRIPT_ARGS_ARR=()
-if [[ -n "$SCRIPT_ARGS" ]]; then
-    # shellcheck disable=SC2206
-    SCRIPT_ARGS_ARR=($SCRIPT_ARGS)
+if [[ ${#ARCHES[@]} -gt 1 ]]; then
+    echo "[ghidra-scan] universal-binary detected: scanning ${#ARCHES[@]} slices serially (${ARCHES[*]})" >&2
+    SLICE_DIR="$OUT_DIR/.slices-$TARGET_ID"
+    mkdir -p "$SLICE_DIR"
+    WORST_RC=0
+    declare -a SLICE_RCS=()
+    for arch in "${ARCHES[@]}"; do
+        SLICE_BIN="$SLICE_DIR/$(basename "$BINARY")-$arch"
+        if [[ ! -f "$SLICE_BIN" ]]; then
+            if ! lipo "$BINARY" -thin "$arch" -output "$SLICE_BIN" 2>&1; then
+                echo "[ghidra-scan] ERROR: lipo -thin $arch failed for $BINARY" >&2
+                exit 7
+            fi
+        fi
+        run_one_scan "$SLICE_BIN" "$TARGET_ID-$arch" "-$arch"
+        SLICE_RCS+=("$arch=$RC")
+        if [[ $RC -gt $WORST_RC ]]; then WORST_RC=$RC; fi
+    done
+    echo "[ghidra-scan] universal-binary done: ${SLICE_RCS[*]} worst_rc=$WORST_RC" >&2
+    exit "$WORST_RC"
 fi
 
-# Don't let `set -e` short-circuit on a non-zero script exit -- we still
-# want to emit the cleaned TSV from whatever stdout was captured.
-set +e
-"$VENV_PY" "$LAUNCHER" "$GHIDRA_HOME" -H \
-    "$PROJECT_DIR" "$TARGET_ID" \
-    "${MODE_ARGS[@]}" \
-    -scriptPath "$SCRIPT_DIR" \
-    -postScript "$SCRIPT_NAME" ${SCRIPT_ARGS_ARR[@]+"${SCRIPT_ARGS_ARR[@]}"} \
-    > "$LOG_STDOUT" 2> "$LOG_STDERR"
-RC=$?
-set -e
-
-# Emit a cleaned .tsv alongside the raw .stdout.log. PyGhidra wraps each
-# println call as `INFO  <script>.py> <line> (GhidraScript)`; strip the
-# prefix and trailing tag so the file pipes cleanly into triage.py without
-# per-call sed. Best-effort: failures here are logged but do not change RC.
-LOG_TSV="$OUT_DIR/${SCRIPT_NAME%.py}.tsv"
-if [[ -s "$LOG_STDOUT" ]]; then
-    sed -E 's/^INFO  [^>]+> //; s/ \(GhidraScript\) +$//' "$LOG_STDOUT" > "$LOG_TSV" || \
-        echo "[ghidra-scan] WARN: failed to emit cleaned tsv at $LOG_TSV" >&2
-fi
-
-END=$(date +%s)
-echo "[ghidra-scan] exit=$RC elapsed=$((END-START))s stdout=$LOG_STDOUT stderr=$LOG_STDERR tsv=$LOG_TSV" >&2
-exit $RC
+run_one_scan "$BINARY" "$TARGET_ID" ""
+exit "$RC"
