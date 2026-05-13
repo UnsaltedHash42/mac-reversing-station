@@ -95,3 +95,5 @@ build/
 *.egg-info/
 node_modules/
 rocket_chat/
+conv.md
+conv-*.md

@@ -12,7 +12,10 @@
 #   selection on universal Mach-Os; pre-slicing is the only correct path.
 # - Project dir naming: ~/ghidra-projects/<project-name>/<target-id>-<slice>
 #   Callers choose the names; we do not synthesize.
-# - Script stdout goes to <out-dir>/stdout.log, stderr to <out-dir>/stderr.log.
+# - Script stdout goes to <out-dir>/<script>.stdout.log, stderr to
+#   <out-dir>/<script>.stderr.log. A cleaned <script>.tsv (PyGhidra
+#   `INFO ... (GhidraScript)` wrappers stripped) is also emitted, suitable
+#   for piping into triage.py without per-call sed.
 #
 # Usage:
 #   scripts/ghidra-scan.sh \
@@ -148,6 +151,9 @@ if [[ -n "$SCRIPT_ARGS" ]]; then
     SCRIPT_ARGS_ARR=($SCRIPT_ARGS)
 fi
 
+# Don't let `set -e` short-circuit on a non-zero script exit -- we still
+# want to emit the cleaned TSV from whatever stdout was captured.
+set +e
 "$VENV_PY" "$LAUNCHER" "$GHIDRA_HOME" -H \
     "$PROJECT_DIR" "$TARGET_ID" \
     "${MODE_ARGS[@]}" \
@@ -155,6 +161,18 @@ fi
     -postScript "$SCRIPT_NAME" ${SCRIPT_ARGS_ARR[@]+"${SCRIPT_ARGS_ARR[@]}"} \
     > "$LOG_STDOUT" 2> "$LOG_STDERR"
 RC=$?
+set -e
+
+# Emit a cleaned .tsv alongside the raw .stdout.log. PyGhidra wraps each
+# println call as `INFO  <script>.py> <line> (GhidraScript)`; strip the
+# prefix and trailing tag so the file pipes cleanly into triage.py without
+# per-call sed. Best-effort: failures here are logged but do not change RC.
+LOG_TSV="$OUT_DIR/${SCRIPT_NAME%.py}.tsv"
+if [[ -s "$LOG_STDOUT" ]]; then
+    sed -E 's/^INFO  [^>]+> //; s/ \(GhidraScript\) +$//' "$LOG_STDOUT" > "$LOG_TSV" || \
+        echo "[ghidra-scan] WARN: failed to emit cleaned tsv at $LOG_TSV" >&2
+fi
+
 END=$(date +%s)
-echo "[ghidra-scan] exit=$RC elapsed=$((END-START))s stdout=$LOG_STDOUT stderr=$LOG_STDERR" >&2
+echo "[ghidra-scan] exit=$RC elapsed=$((END-START))s stdout=$LOG_STDOUT stderr=$LOG_STDERR tsv=$LOG_TSV" >&2
 exit $RC
