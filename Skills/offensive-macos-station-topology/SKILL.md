@@ -102,6 +102,22 @@ Active station entries:
 
 The old Hopper MCP server entry should be absent. Hopper remains a manual GUI escape hatch only.
 
+## SSH Config (workstation)
+
+Publish this stanza to `~/.ssh/config` for every lab host. The MCP transports already hold persistent SSH connections, but ad-hoc `ssh <lab-host> '<cmd>'` invocations from the Bash tool pay a fresh handshake per call without `ControlMaster`. PASS-001 measured cumulative minutes lost to repeat handshakes during polling.
+
+```
+Host <lab-host>
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%r@%h:%p
+    ControlPersist 10m
+    ServerAliveInterval 30
+```
+
+`ServerAliveInterval 30` keeps long-running scans from dropping when the SSH session goes idle (a 30-minute Ghidra analyzer phase emits no traffic). `ControlPersist 10m` reuses one TCP/SSH session for sub-10-ms repeats of `ssh <lab-host> '...'`.
+
+`scripts/install-vm-ssh-key.sh` checks for this stanza and prints a recommendation if absent — it does not auto-edit `~/.ssh/config` to avoid clobbering operator-specific entries.
+
 ## Troubleshooting
 
 - SSH fails: `ssh -o BatchMode=yes <lab-host> true`.

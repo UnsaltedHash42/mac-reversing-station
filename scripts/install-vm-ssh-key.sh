@@ -72,3 +72,30 @@ else
     echo "Check ~/.ssh/config for ${HOST_ALIAS} (PubkeyAuthentication must be yes), then re-run." >&2
     exit 4
 fi
+
+# Recommend ControlMaster stanza if missing. Don't auto-edit ssh config —
+# operators have their own per-host settings we shouldn't clobber.
+SSH_CONFIG="${HOME}/.ssh/config"
+if [[ -f "${SSH_CONFIG}" ]] && ! awk -v host="${HOST_ALIAS}" '
+    /^[Hh]ost / { in_block = 0 }
+    $1 ~ /^[Hh]ost$/ {
+        for (i = 2; i <= NF; i++) if ($i == host) in_block = 1
+    }
+    in_block && /^[[:space:]]*[Cc]ontrol[Mm]aster/ { found = 1; exit }
+    END { exit (found ? 0 : 1) }
+' "${SSH_CONFIG}"; then
+    cat <<HINT
+
+NOTE: ${HOST_ALIAS} has no ControlMaster stanza in ${SSH_CONFIG}.
+Repeat ad-hoc 'ssh ${HOST_ALIAS} <cmd>' calls pay a fresh handshake each
+time. Add to ${SSH_CONFIG}:
+
+    Host ${HOST_ALIAS}
+        ControlMaster auto
+        ControlPath ~/.ssh/cm-%r@%h:%p
+        ControlPersist 10m
+        ServerAliveInterval 30
+
+(See Skills/offensive-macos-station-topology/SKILL.md for rationale.)
+HINT
+fi
