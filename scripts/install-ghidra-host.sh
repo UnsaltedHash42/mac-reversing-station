@@ -24,6 +24,8 @@ REMOTE_CACHE="${REMOTE_HOME}/.cache/macre-ghidra"
 LOCAL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_GHIDRA_SCRIPTS="${LOCAL_ROOT}/ghidra-scripts"
 REMOTE_GHIDRA_SCRIPTS="${REMOTE_HOME}/ghidra-scripts"
+LOCAL_HEADLESS_PATCHES="${LOCAL_ROOT}/Skills/offensive-macos-tooling-ghidra-headless"
+REMOTE_HEADLESS_PATCH_DIR="${REMOTE_CACHE}/headless-patches"
 
 GHIDRA_VERSION="12.0.4"
 GHIDRA_DATE="20260303"
@@ -229,6 +231,22 @@ sync_ghidra_scripts() {
     echo "OK - synced ghidra-scripts to ${HOST}:${REMOTE_GHIDRA_SCRIPTS}/"
 }
 
+sync_headless_patches() {
+    if [[ ! -d "${LOCAL_HEADLESS_PATCHES}" ]]; then
+        echo "WARN: ${LOCAL_HEADLESS_PATCHES} does not exist; skipping headless patch sync" >&2
+        return
+    fi
+    if ! ls "${LOCAL_HEADLESS_PATCHES}"/*.patch >/dev/null 2>&1; then
+        echo "WARN: no *.patch files in ${LOCAL_HEADLESS_PATCHES}; skipping headless patch sync" >&2
+        return
+    fi
+    ssh -o BatchMode=yes "${HOST}" "mkdir -p '${REMOTE_HEADLESS_PATCH_DIR}'"
+    rsync -az --delete --include='*.patch' --exclude='*' \
+        -e "ssh -o BatchMode=yes" \
+        "${LOCAL_HEADLESS_PATCHES}/" "${HOST}:${REMOTE_HEADLESS_PATCH_DIR}/"
+    echo "OK - synced headless-mcp patches to ${HOST}:${REMOTE_HEADLESS_PATCH_DIR}/"
+}
+
 remote_install() {
     ssh -o BatchMode=yes -o ServerAliveInterval=30 "${HOST}" \
         GHIDRA_VERSION="${GHIDRA_VERSION}" \
@@ -254,6 +272,7 @@ remote_install() {
         REMOTE_GHIDRA="${REMOTE_GHIDRA}" \
         REMOTE_JDK="${REMOTE_JDK}" \
         REMOTE_CACHE="${REMOTE_CACHE}" \
+        REMOTE_HEADLESS_PATCH_DIR="${REMOTE_HEADLESS_PATCH_DIR}" \
         /bin/bash -s <<'REMOTE_INSTALL'
 set -euo pipefail
 
@@ -357,6 +376,32 @@ fi
 git -C "${REMOTE_HEADLESS_SRC}" fetch --quiet origin
 git -C "${REMOTE_HEADLESS_SRC}" checkout --quiet "${HEADLESS_MCP_COMMIT}"
 
+# Apply downstream patches from REMOTE_HEADLESS_PATCH_DIR (synced from
+# Skills/offensive-macos-tooling-ghidra-headless/*.patch). Idempotent:
+# `git apply --reverse --check` succeeds when a patch is already applied,
+# so skip those. `git apply --check` succeeds when a clean apply is
+# possible. If neither works the working tree has drifted; fail loudly
+# rather than leave a half-applied state.
+if [[ -d "${REMOTE_HEADLESS_PATCH_DIR}" ]]; then
+    shopt -s nullglob
+    for patch in "${REMOTE_HEADLESS_PATCH_DIR}"/*.patch; do
+        patch_name="$(basename "${patch}")"
+        if git -C "${REMOTE_HEADLESS_SRC}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
+            echo "OK patch already applied: ${patch_name}"
+            continue
+        fi
+        if git -C "${REMOTE_HEADLESS_SRC}" apply --check "${patch}" >/dev/null 2>&1; then
+            git -C "${REMOTE_HEADLESS_SRC}" apply "${patch}"
+            echo "OK applied patch: ${patch_name}"
+        else
+            echo "ERROR cannot apply patch (working tree drifted from base?): ${patch_name}" >&2
+            git -C "${REMOTE_HEADLESS_SRC}" apply --check "${patch}" >&2 || true
+            exit 3
+        fi
+    done
+    shopt -u nullglob
+fi
+
 if [[ -x "${REMOTE_HEADLESS_VENV}/bin/python" ]]; then
     headless_venv_ok="$("${REMOTE_HEADLESS_VENV}/bin/python" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' && printf yes || printf no)"
 else
@@ -426,6 +471,7 @@ REMOTE_INSTALL
 
 case "${1:---install}" in
     --install)
+        sync_headless_patches
         remote_install
         sync_ghidra_scripts
         remote_check

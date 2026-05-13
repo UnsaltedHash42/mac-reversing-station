@@ -40,6 +40,7 @@
 #   3  binary not found
 #   4  ghidra/pyghidra launch missing
 #   5  disk-preflight tripwire (override with MACRE_SKIP_DISK_PREFLIGHT=1)
+#   6  heap-vs-RAM preflight tripwire (override with MACRE_SKIP_RAM_PREFLIGHT=1)
 
 set -euo pipefail
 
@@ -98,6 +99,41 @@ if [[ -z "${MACRE_SKIP_DISK_PREFLIGHT:-}" ]]; then
             $((FREE_BYTES / 1048576)) $((REQUIRED / 1048576)) $((BIN_SIZE_BYTES / 1048576)) >&2
         printf '  override with MACRE_SKIP_DISK_PREFLIGHT=1\n' >&2
         exit 5
+    fi
+fi
+
+# Heap-vs-RAM preflight. PASS-001's 4 GB VM with -Xmx12g caused 2+ hours of swap
+# thrashing before detection. Refuse if MACRE_GHIDRA_HEAP exceeds physical_ram_gb
+# minus 6 GB headroom (JVM non-heap + Ghidra off-heap + OS userspace + page cache).
+# Override via MACRE_SKIP_RAM_PREFLIGHT=1.
+if [[ -z "${MACRE_SKIP_RAM_PREFLIGHT:-}" ]]; then
+    HEAP_LOWER="$(printf '%s' "$HEAP_SIZE" | tr '[:upper:]' '[:lower:]')"
+    case "$HEAP_LOWER" in
+        *g) HEAP_GB=${HEAP_LOWER%g} ;;
+        *m) HEAP_GB=$(( ${HEAP_LOWER%m} / 1024 )) ;;
+        *)
+            printf 'ERROR: cannot parse MACRE_GHIDRA_HEAP=%s (expected <N>g or <N>m)\n' "$HEAP_SIZE" >&2
+            printf '  override with MACRE_SKIP_RAM_PREFLIGHT=1\n' >&2
+            exit 6
+            ;;
+    esac
+    if ! [[ "$HEAP_GB" =~ ^[0-9]+$ ]]; then
+        printf 'ERROR: cannot parse MACRE_GHIDRA_HEAP=%s (non-integer magnitude)\n' "$HEAP_SIZE" >&2
+        printf '  override with MACRE_SKIP_RAM_PREFLIGHT=1\n' >&2
+        exit 6
+    fi
+    MEMSIZE_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo 0)
+    if [[ "$MEMSIZE_BYTES" -gt 0 ]]; then
+        PHYS_GB=$(( MEMSIZE_BYTES / 1073741824 ))
+        MAX_HEAP_GB=$(( PHYS_GB - 6 ))
+        if [[ $MAX_HEAP_GB -lt 1 ]]; then MAX_HEAP_GB=1; fi
+        if [[ $HEAP_GB -gt $MAX_HEAP_GB ]]; then
+            printf 'ERROR: MACRE_GHIDRA_HEAP=%s exceeds physical_ram_gb-6\n' "$HEAP_SIZE" >&2
+            printf '  physical_ram_gb=%d, max_heap_gb=%d, requested_heap_gb=%d\n' \
+                "$PHYS_GB" "$MAX_HEAP_GB" "$HEAP_GB" >&2
+            printf '  override with MACRE_SKIP_RAM_PREFLIGHT=1\n' >&2
+            exit 6
+        fi
     fi
 fi
 
