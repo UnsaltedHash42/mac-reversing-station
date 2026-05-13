@@ -326,18 +326,24 @@ against the same binary the MCP would have opened.
   Callers pass `--project <name> --target-id <id>` so the mapping is
   explicit. First call uses `-import`; subsequent calls detect the
   existing `.gpr` and use `-process <binary> -noanalysis`.
-- **JVM heap default `-Xmx12g`** (overridable via `MACRE_GHIDRA_HEAP`).
-  Ghidra's decompiler is heap-hungry; the conservative default lets
-  large binaries finish without OOM.
-- **Pre-slice universal Mach-Os.** `analyzeHeadless` has no flag for
-  slice selection on universal binaries; the caller must
-  `lipo -thin <arch>` first. The wrapper does not auto-slice — too
-  much implicit behavior.
+- **JVM heap default `-Xmx10g`** (overridable via `MACRE_GHIDRA_HEAP`).
+  Tracks the `physical_ram_gb - 6` rule for the 16 GB lab VM; preflight
+  at `ghidra-scan.sh:77-99` refuses heaps that exceed
+  `sysctl hw.memsize - 6 GB` (exit code 6) so the default and the
+  ceiling agree.
+- **Auto-slice universal Mach-Os.** `analyzeHeadless` has no flag for
+  slice selection, so the wrapper discriminates fat-vs-non-fat with
+  `lipo -info`, extracts each slice into
+  `<out-dir>/.slices-<target-id>/<target-id>-<arch>` (cached so reruns
+  skip the extraction), runs a per-slice pass with its own
+  `<target-id>-<arch>.gpr` project + log, executes serially to keep
+  the heap budget pinned, and returns the worst per-slice rc as the
+  overall exit. Exit code 7 is reserved for `lipo -thin` extraction
+  failure. Pre-sliced inputs ("Non-fat file:" from `lipo -info`)
+  follow the original single-pass path unchanged.
 
-**Interaction with `read_only=true` in MCP Workflow A.** The SKILL.md
-examples (`read_only=true, update_analysis=true` on `program.open`)
-pass `read_only=true` to the MCP tool. Verify with the pinned
-`ghidra-headless-mcp` semantics whether that blocks DB commits;
-if it does, the MCP path is NOT persistent and an equivalent
-adjustment is needed upstream. For the SSH-fallback path,
-`-readOnly` unambiguously discards the DB — so the wrapper omits it.
+**Interaction with `read_only=true` in MCP Workflow A.** See
+`SKILL.md ## Mutability Semantics — read_only and update_analysis`
+for the verified semantics on the pinned commit (PR #17). The
+SSH-fallback path here unambiguously discards the DB if `-readOnly`
+is passed, which is why the wrapper omits it.
