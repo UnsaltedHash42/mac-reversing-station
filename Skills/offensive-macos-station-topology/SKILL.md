@@ -64,6 +64,21 @@ flowchart LR
 | Durable notes/findings | Workstation | private findings repo |
 | Manual visual RE | lab-host GUI | optional GUI decompiler, not MCP |
 
+## Workstation Paths
+
+The station's dev repo lives at **`~/tools/skillz`** (canonical). Some
+operator-facing notes still call it `~/tools/skills` — that is an alias,
+not a separate tree. Any path referenced in this repo should resolve
+under `~/tools/skillz/`. If the alias confuses muscle memory, run:
+
+```bash
+bash ~/tools/skillz/scripts/install-skills-symlink.sh
+```
+
+That creates `~/tools/skills` as a symlink to `~/tools/skillz` so both
+names resolve. Idempotent; refuses to overwrite an existing non-symlink
+directory at the alias path.
+
 ## Cold Start
 
 ```bash
