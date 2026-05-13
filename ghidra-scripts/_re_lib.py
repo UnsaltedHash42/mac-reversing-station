@@ -334,6 +334,13 @@ def callers_of(function):
         refs = list(getReferencesTo(function.getEntryPoint()))
     except Exception:
         return
+    target_entry = None
+    target_name = None
+    try:
+        target_entry = function.getEntryPoint()
+        target_name = function.getName()
+    except Exception:
+        pass
     for ref in refs:
         try:
             rt = ref.getReferenceType()
@@ -345,10 +352,22 @@ def callers_of(function):
             site = ref.getFromAddress()
         except Exception:
             continue
+        # Skip the import-thunk self-reference. PASS-001 saw rows whose
+        # "caller" was the external symbol itself (e.g. a row claiming
+        # _SecTaskCopyValueForEntitlement calls _SecTaskCopyValueForEntitlement)
+        # because the thunk's entry counts as a call xref to itself.
+        if target_entry is not None and site == target_entry:
+            continue
         try:
             caller = fm.getFunctionContaining(site)
         except Exception:
             caller = None
+        if caller is not None and target_name is not None:
+            try:
+                if caller.getName() == target_name:
+                    continue
+            except Exception:
+                pass
         yield caller, site
 
 
@@ -1081,8 +1100,13 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
             seen.add(text)
             if emitted >= rule.max_anchors:
                 break
+            # Cap the name and evidence columns. PASS-001 hit a 800 KB
+            # single TSV row when an Electron Framework PEM cert matched
+            # a string rule and the full PEM body landed in the name
+            # column.
+            name_field = safe_field(text)[:160]
             evidence = "%s=%s" % (rule.evidence_label, safe_field(text)[:120])
-            writer.add(rule.tier, rule.kind, text, format_addr(addr), evidence)
+            writer.add(rule.tier, rule.kind, name_field, format_addr(addr), evidence)
             emitted += 1
 
     if function_rules:

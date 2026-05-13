@@ -63,8 +63,11 @@ OBJC_SPECS = [
 run_string_scan(
     scan_name="scan_tcc_prompt_surface",
     rules=[
+        # Bare 'TCC' was dropped 2026-05-13 — re.I matched 'TCC' inside base64
+        # PEM root-cert blobs, producing 24/24 false positives on Electron
+        # Framework. The four specific forms below are precise enough.
         StringRule("C", "tcc_string",
-                   r"(TCC|TCCAccessRequest|kTCCService|com\.apple\.TCC|tccd)",
+                   r"(TCCAccessRequest|kTCCService|com\.apple\.TCC|tccd)",
                    max_anchors=24, evidence_label="string"),
         StringRule("C", "apple_event_string",
                    r"(AppleEvent|Apple Events|kTCCServiceAppleEvents|NSAppleEventsUsageDescription|AEDesc)",
