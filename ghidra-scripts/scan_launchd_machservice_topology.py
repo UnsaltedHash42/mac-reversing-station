@@ -24,7 +24,7 @@
 #                               SecTaskCopyValueForEntitlement
 #
 # @category Mach-O.Launchd
-# @runtime Jython
+# @runtime PyGhidra
 
 import re
 

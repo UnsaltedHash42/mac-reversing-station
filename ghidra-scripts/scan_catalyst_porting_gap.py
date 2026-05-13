@@ -11,7 +11,7 @@
 #   bypass_string               bypass / skip / non-macos / exempt / legacy / compat
 #
 # @category Mach-O.CatalystPortingGap
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import StringRule, run_string_scan
 

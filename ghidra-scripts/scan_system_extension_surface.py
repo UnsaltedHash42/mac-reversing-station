@@ -17,7 +17,7 @@
 #                               NEProvider
 #
 # @category Mach-O.SystemExtensions
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import StringRule, run_string_scan
 

@@ -25,7 +25,7 @@
 #   identity_string             bundleIdentifier / executablePath / SecRequirement / csreq
 #
 # @category Mach-O.TCC
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, ObjCSelectorSpec, StringRule, run_string_scan
 

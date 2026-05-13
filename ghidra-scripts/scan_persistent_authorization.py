@@ -26,7 +26,7 @@
 #   container_string            Group Containers / Application Scripts / Application Support
 #
 # @category Mach-O.PersistentAuthorization
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

@@ -29,7 +29,7 @@
 #   io_kit_string               IOKit / IOConnect / IOService / IOUserClient
 #
 # @category Mach-O.IOKit
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

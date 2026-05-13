@@ -24,7 +24,7 @@
 # this script.
 #
 # @category Mach-O.XPC
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

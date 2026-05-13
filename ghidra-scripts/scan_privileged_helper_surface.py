@@ -24,7 +24,7 @@
 #   install_string          install / update / patch / bless tokens
 #
 # @category Mach-O.PrivilegedHelpers
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

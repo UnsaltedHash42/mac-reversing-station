@@ -19,7 +19,7 @@
 #   FAST_MODE = False -> use DecompInterface. Slower, higher precision.
 #
 # @category Mach-O.XPC
-# @runtime Jython
+# @runtime PyGhidra
 
 import re
 import plistlib

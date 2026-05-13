@@ -15,7 +15,7 @@
 #   - Common authorization-prompt UI selectors
 #
 # @category Mach-O.ObjC
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import (
     AnchorWriter, DecompCache, ObjCSelectorSpec, format_addr,
