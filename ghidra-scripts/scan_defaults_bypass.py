@@ -24,7 +24,7 @@
 #   defaults_domain             reverse-DNS strings that look like preference domains
 #
 # @category Mach-O.DefaultsBypass
-# @runtime Jython
+# @runtime PyGhidra
 
 import re
 

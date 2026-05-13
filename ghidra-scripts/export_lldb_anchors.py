@@ -29,7 +29,7 @@
 #   SIDECAR_DIR         -- override output dir for the .lldb file
 #
 # @category Mach-O.Anchors
-# @runtime Jython
+# @runtime PyGhidra
 
 import os
 import re

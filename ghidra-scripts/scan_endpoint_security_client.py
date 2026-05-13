@@ -24,7 +24,7 @@
 #   policy_string               allow / deny / block / authorize / quarantine
 #
 # @category Mach-O.EndpointSecurity
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

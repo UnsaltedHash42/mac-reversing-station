@@ -22,7 +22,7 @@
 # directory on sys.path, so `from _re_lib import ...` works under both
 # Jython 2.7 and PyGhidra (Python 3).
 #
-# @runtime Jython
+# @runtime PyGhidra
 
 import os
 import re
@@ -64,6 +64,7 @@ def warn(msg):
 
 def program_path():
     """Best-effort path of the loaded program. Falls back to its name."""
+    _bind_ghidra_globals_from_caller()
     try:
         path = currentProgram.getExecutablePath()
         if path:
@@ -89,6 +90,72 @@ def safe_field(value):
 
 
 # --------------------------------------------------------------------------
+# PyGhidra compatibility: bind Ghidra runtime globals into this module
+# --------------------------------------------------------------------------
+#
+# Under PyGhidra (Python 3), Ghidra-injected names like currentProgram,
+# println, printerr, monitor, state are resolved via the script's
+# PyGhidraScript dict-subclass `__missing__` hook. They are only visible from
+# the script's top-level frame, NOT from imported modules. Helpers in this
+# file reference `currentProgram` directly — under PyGhidra that raises
+# NameError as soon as e.g. StringIndex._load() runs.
+#
+# Under Jython (the original target runtime) these names propagated to
+# imported modules; the scan scripts work unchanged.
+#
+# Workaround: walk the call stack at each public entry point to find a frame
+# whose globals can resolve currentProgram, and copy the relevant names into
+# this module's __dict__. Subsequent LOAD_GLOBAL lookups inside _re_lib
+# resolve normally. Called by `run_string_scan` and the other public entry
+# points.
+
+_GHIDRA_RUNTIME_NAMES = (
+    # State / monitor / current selection
+    "currentProgram", "currentAddress", "currentSelection",
+    "currentHighlight", "currentLocation",
+    "monitor", "state",
+    # I/O
+    "println", "printerr",
+    # GhidraScript flat-API helpers that this library calls bare
+    "getReferencesTo", "getDataAt", "getFunctionAt", "getFunctionContaining",
+    "getInstructionAt", "getSymbol", "getSymbolAt", "getNamespace",
+    "toAddr", "getMemoryBlock",
+)
+
+
+def _bind_ghidra_globals_from_caller():
+    """Copy Ghidra runtime names from a caller's globals into this module's globals.
+
+    Required under PyGhidra; a no-op under Jython (names are already global).
+    Returns True if a caller frame carrying `currentProgram` was found.
+    Safe to call from every public entry point — rebinds each call because
+    `_re_lib` is cached across Ghidra script runs but `currentProgram` is not.
+    """
+    import inspect
+    self_globals = sys.modules[__name__].__dict__
+    frame = inspect.currentframe()
+    if frame is not None:
+        frame = frame.f_back  # skip this fn
+    while frame is not None:
+        g = frame.f_globals
+        if g is self_globals:
+            frame = frame.f_back
+            continue
+        try:
+            g["currentProgram"]  # triggers PyGhidraScript.__missing__ if applicable
+        except (KeyError, NameError, AttributeError):
+            frame = frame.f_back
+            continue
+        for name in _GHIDRA_RUNTIME_NAMES:
+            try:
+                self_globals[name] = g[name]
+            except (KeyError, NameError, AttributeError):
+                self_globals.pop(name, None)
+        return True
+    return False
+
+
+# --------------------------------------------------------------------------
 # String + function indices (lazy, capped, truncation-aware)
 # --------------------------------------------------------------------------
 
@@ -111,6 +178,7 @@ class StringIndex(object):
     def _load(self):
         if self._items is not None:
             return
+        _bind_ghidra_globals_from_caller()
         items = []
         listing = currentProgram.getListing()
         seen = 0
@@ -174,6 +242,7 @@ class FunctionIndex(object):
     def _load(self):
         if self._items is not None:
             return
+        _bind_ghidra_globals_from_caller()
         items = []
         truncated = False
         try:
@@ -223,6 +292,7 @@ def find_external(name):
     Tries both the bare name and a leading-underscore variant; some
     externals appear only as labels resolved through thunks.
     """
+    _bind_ghidra_globals_from_caller()
     try:
         from ghidra.program.model.listing import Function
     except Exception:
@@ -258,11 +328,19 @@ def callers_of(function):
     """
     if function is None:
         return
+    _bind_ghidra_globals_from_caller()
     fm = currentProgram.getFunctionManager()
     try:
         refs = list(getReferencesTo(function.getEntryPoint()))
     except Exception:
         return
+    target_entry = None
+    target_name = None
+    try:
+        target_entry = function.getEntryPoint()
+        target_name = function.getName()
+    except Exception:
+        pass
     for ref in refs:
         try:
             rt = ref.getReferenceType()
@@ -274,10 +352,22 @@ def callers_of(function):
             site = ref.getFromAddress()
         except Exception:
             continue
+        # Skip the import-thunk self-reference. PASS-001 saw rows whose
+        # "caller" was the external symbol itself (e.g. a row claiming
+        # _SecTaskCopyValueForEntitlement calls _SecTaskCopyValueForEntitlement)
+        # because the thunk's entry counts as a call xref to itself.
+        if target_entry is not None and site == target_entry:
+            continue
         try:
             caller = fm.getFunctionContaining(site)
         except Exception:
             caller = None
+        if caller is not None and target_name is not None:
+            try:
+                if caller.getName() == target_name:
+                    continue
+            except Exception:
+                pass
         yield caller, site
 
 
@@ -325,6 +415,7 @@ class DecompCache(object):
             return None
         if self._iface is not None:
             return self._iface
+        _bind_ghidra_globals_from_caller()
         try:
             from ghidra.app.decompiler import DecompInterface, DecompileOptions
         except Exception:
@@ -416,6 +507,7 @@ def recover_string_at(address):
     """
     if address is None:
         return None
+    _bind_ghidra_globals_from_caller()
 
     # 1. Defined data Ghidra already understands.
     try:
@@ -543,6 +635,7 @@ def recover_call_string_arg(decomp_iface, callsite_addr, arg_index):
     arg_index is 0-based across function arguments (input 0 in pcode is
     the call target, so arg N maps to pcode input N+1).
     """
+    _bind_ghidra_globals_from_caller()
     target_idx = arg_index + 1
     inputs = list(_pcode_inputs_at(decomp_iface, callsite_addr))
     if len(inputs) <= target_idx:
@@ -558,6 +651,7 @@ def recover_call_const_arg(decomp_iface, callsite_addr, arg_index):
 
     Returns an int or None.
     """
+    _bind_ghidra_globals_from_caller()
     target_idx = arg_index + 1
     inputs = list(_pcode_inputs_at(decomp_iface, callsite_addr))
     if len(inputs) <= target_idx:
@@ -665,6 +759,7 @@ def recover_call_arg_fast(callsite_addr, arg_index=0):
     it sees and returns it. Calls with multiple string operands will
     pick the wrong arg under FAST_MODE -- accepted tradeoff.
     """
+    _bind_ghidra_globals_from_caller()
     try:
         listing = currentProgram.getListing()
         instr = listing.getInstructionAt(callsite_addr)
@@ -747,6 +842,7 @@ def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
     and ARC. We enumerate all of them and recover the selector at each
     callsite, then bucket by selector spec.
     """
+    _bind_ghidra_globals_from_caller()
     own_cache = decomp_cache is None
     if own_cache:
         decomp_cache = DecompCache()
@@ -755,6 +851,7 @@ def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
         # Build a quick selector -> spec map.
         wanted = {s.selector: s for s in selector_specs}
         per_selector_count = {s.selector: 0 for s in selector_specs}
+        total_processed = 0
 
         for msgsend_name in ("_objc_msgSend", "objc_msgSend",
                              "_objc_msgSendSuper2", "objc_msgSendSuper2",
@@ -765,6 +862,11 @@ def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
             for caller, site in callers_of(fn):
                 if caller is None:
                     continue
+                total_processed += 1
+                if total_processed % HEARTBEAT_EVERY == 0:
+                    selector_hits = sum(per_selector_count.values())
+                    warn("[enrich_objc_msgsend] processed=%d msgsend=%s hits=%d" %
+                         (total_processed, msgsend_name, selector_hits))
                 sel = recover_objc_selector(decomp, site) if decomp else None
                 if not sel:
                     continue
@@ -813,6 +915,10 @@ class APISpec(object):
 
 DEFAULT_MAX_PER_API = int(os.environ.get("MACRE_MAX_PER_API", "64"))
 
+# Emit a stderr heartbeat every N callsites in enrich phases. Visible to
+# ghidra-watch.sh and to operators tailing stderr during long scans.
+HEARTBEAT_EVERY = int(os.environ.get("MACRE_HEARTBEAT_EVERY", "100"))
+
 
 def enrich_callsite_args(writer, api_specs, decomp_cache=None,
                          max_per_api=DEFAULT_MAX_PER_API):
@@ -827,12 +933,14 @@ def enrich_callsite_args(writer, api_specs, decomp_cache=None,
 
     Returns a dict of {api_name: callsite_count} for stderr summary.
     """
+    _bind_ghidra_globals_from_caller()
     own_cache = decomp_cache is None
     if own_cache:
         decomp_cache = DecompCache()
     try:
         decomp_iface = decomp_cache.open()
         counts = {}
+        total_processed = 0
         for spec in api_specs:
             fn = find_external(spec.name)
             if fn is None:
@@ -845,6 +953,10 @@ def enrich_callsite_args(writer, api_specs, decomp_cache=None,
                     break
                 if caller is None:
                     continue
+                total_processed += 1
+                if total_processed % HEARTBEAT_EVERY == 0:
+                    warn("[enrich_callsite_args] processed=%d api=%s hits=%d" %
+                         (total_processed, spec.name, count))
                 evidence = "api=%s; site=%s" % (spec.name, format_addr(site))
                 if spec.recover_kind == "string":
                     val = None
@@ -972,6 +1084,7 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
     Returns the AnchorWriter after flush so callers can read counters
     for further reporting.
     """
+    _bind_ghidra_globals_from_caller()
     if string_index is None:
         string_index = StringIndex()
     writer = AnchorWriter(scan_name)
@@ -987,8 +1100,13 @@ def run_string_scan(scan_name, rules, string_index=None, function_rules=None,
             seen.add(text)
             if emitted >= rule.max_anchors:
                 break
+            # Cap the name and evidence columns. PASS-001 hit a 800 KB
+            # single TSV row when an Electron Framework PEM cert matched
+            # a string rule and the full PEM body landed in the name
+            # column.
+            name_field = safe_field(text)[:160]
             evidence = "%s=%s" % (rule.evidence_label, safe_field(text)[:120])
-            writer.add(rule.tier, rule.kind, text, format_addr(addr), evidence)
+            writer.add(rule.tier, rule.kind, name_field, format_addr(addr), evidence)
             emitted += 1
 
     if function_rules:

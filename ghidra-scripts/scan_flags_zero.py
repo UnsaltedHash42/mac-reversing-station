@@ -23,7 +23,7 @@
 #   amfi_string             AMFI / AppleMobileFileIntegrity / MISValidate
 #
 # @category Mach-O.CodeSigning
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 

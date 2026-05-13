@@ -30,7 +30,7 @@
 #                               kInternetEventClass
 #
 # @category Mach-O.URLSchemes
-# @runtime Jython
+# @runtime PyGhidra
 
 import re
 

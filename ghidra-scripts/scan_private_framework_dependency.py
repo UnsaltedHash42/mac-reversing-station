@@ -23,7 +23,7 @@
 #   weak_link_token         weak link / LC_LOAD_WEAK_DYLIB / NSClassFromString
 #
 # @category Mach-O.PrivateFramework
-# @runtime Jython
+# @runtime PyGhidra
 
 from _re_lib import APISpec, StringRule, run_string_scan
 
