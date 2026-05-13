@@ -34,12 +34,29 @@ ANCHOR_HEADER = ("target", "tier", "anchor_kind", "name", "address", "evidence")
 # Hard cap on the per-scan string index. Hitting this is recorded in the
 # stderr summary and surfaced via AnchorWriter.summary() so the agent can
 # notice when a row count is bounded by the cap rather than by reality.
-# Override via env: MACRE_MAX_STRINGS=50000
-DEFAULT_MAX_STRINGS = int(os.environ.get("MACRE_MAX_STRINGS", "20000"))
+#
+# Resolution precedence (StringIndex/FunctionIndex apply at first _load()):
+#   1. Explicit constructor argument (e.g. ``StringIndex(max_strings=N)``).
+#   2. Env var (``MACRE_MAX_STRINGS`` / ``MACRE_MAX_FUNCTIONS``).
+#   3. Auto-scale by program size, clamped to [floor, ceiling].
+#
+# The auto-scale path was added 2026-05-13 (SHAKEDOWN #20). Electron
+# Framework / Apple frameworks blew past the legacy 20k / 50k floors and
+# tier-C coverage was bounded by the cap rather than by the binary. The
+# floor preserves prior behavior for small targets; the ceiling caps the
+# slowest pathological case.
+DEFAULT_MAX_STRINGS_FLOOR = 20000
+DEFAULT_MAX_STRINGS_CEIL = 200000
+DEFAULT_MAX_FUNCTIONS_FLOOR = 50000
+DEFAULT_MAX_FUNCTIONS_CEIL = 500000
 
-# Hard cap on the per-scan function-name iteration. Same rationale.
-# Override via env: MACRE_MAX_FUNCTIONS=100000
-DEFAULT_MAX_FUNCTIONS = int(os.environ.get("MACRE_MAX_FUNCTIONS", "50000"))
+# Back-compat: legacy importers and the truncation-warning string still
+# read these. They now reflect the explicit env override when set, else
+# the floor (auto-scale resolves per-index in _load()).
+_MAX_STRINGS_FROM_ENV = "MACRE_MAX_STRINGS" in os.environ
+_MAX_FUNCTIONS_FROM_ENV = "MACRE_MAX_FUNCTIONS" in os.environ
+DEFAULT_MAX_STRINGS = int(os.environ.get("MACRE_MAX_STRINGS", str(DEFAULT_MAX_STRINGS_FLOOR)))
+DEFAULT_MAX_FUNCTIONS = int(os.environ.get("MACRE_MAX_FUNCTIONS", str(DEFAULT_MAX_FUNCTIONS_FLOOR)))
 
 
 # --------------------------------------------------------------------------
@@ -159,6 +176,60 @@ def _bind_ghidra_globals_from_caller():
 # String + function indices (lazy, capped, truncation-aware)
 # --------------------------------------------------------------------------
 
+_AUTO_CAP = object()  # sentinel: "no cap was passed in; auto-scale at load"
+
+
+def _binary_size_mb():
+    """Best-effort program size in MB. Falls back to 0 when unavailable.
+
+    Used by the auto-scale paths in StringIndex / FunctionIndex when the
+    caller didn't pin a cap and the operator didn't set the env var.
+    Reads the loaded image size from the memory map; that includes every
+    initialized + zero-fill section, which is the right axis for the
+    "how many strings can this binary plausibly contain" question.
+    """
+    try:
+        mem = currentProgram.getMemory()
+    except Exception:
+        return 0
+    total = 0
+    try:
+        for block in mem.getBlocks():
+            try:
+                if block.isInitialized() or block.isMapped():
+                    total += int(block.getSize())
+            except Exception:
+                continue
+    except Exception:
+        return 0
+    return total // (1024 * 1024)
+
+
+def _resolve_auto_cap(kind):
+    """Return (chosen_cap, source_label) for StringIndex/FunctionIndex.
+
+    kind is "strings" or "functions". Honors env overrides; otherwise
+    scales linearly with binary size between floor and ceiling.
+    """
+    if kind == "strings":
+        env_set = _MAX_STRINGS_FROM_ENV
+        env_val = DEFAULT_MAX_STRINGS
+        floor = DEFAULT_MAX_STRINGS_FLOOR
+        ceiling = DEFAULT_MAX_STRINGS_CEIL
+        per_mb = 200
+    else:
+        env_set = _MAX_FUNCTIONS_FROM_ENV
+        env_val = DEFAULT_MAX_FUNCTIONS
+        floor = DEFAULT_MAX_FUNCTIONS_FLOOR
+        ceiling = DEFAULT_MAX_FUNCTIONS_CEIL
+        per_mb = 500
+    if env_set:
+        return env_val, "env"
+    size_mb = _binary_size_mb()
+    scaled = max(floor, min(ceiling, size_mb * per_mb))
+    return scaled, "auto(size_mb=%d)" % size_mb
+
+
 class StringIndex(object):
     """Snapshot of defined-data strings in the current program.
 
@@ -168,17 +239,22 @@ class StringIndex(object):
     listing.
     """
 
-    __slots__ = ("max_strings", "_items", "_truncated")
+    __slots__ = ("max_strings", "_items", "_truncated", "_cap_source")
 
-    def __init__(self, max_strings=DEFAULT_MAX_STRINGS):
+    def __init__(self, max_strings=_AUTO_CAP):
         self.max_strings = max_strings
         self._items = None
         self._truncated = False
+        self._cap_source = "explicit" if max_strings is not _AUTO_CAP else None
 
     def _load(self):
         if self._items is not None:
             return
         _bind_ghidra_globals_from_caller()
+        if self.max_strings is _AUTO_CAP:
+            self.max_strings, self._cap_source = _resolve_auto_cap("strings")
+            warn("[StringIndex] max_strings=%d source=%s" %
+                 (self.max_strings, self._cap_source))
         items = []
         listing = currentProgram.getListing()
         seen = 0
@@ -232,17 +308,22 @@ class StringIndex(object):
 class FunctionIndex(object):
     """Snapshot of (name, entry-point) pairs for every function in the program."""
 
-    __slots__ = ("max_functions", "_items", "_truncated")
+    __slots__ = ("max_functions", "_items", "_truncated", "_cap_source")
 
-    def __init__(self, max_functions=DEFAULT_MAX_FUNCTIONS):
+    def __init__(self, max_functions=_AUTO_CAP):
         self.max_functions = max_functions
         self._items = None
         self._truncated = False
+        self._cap_source = "explicit" if max_functions is not _AUTO_CAP else None
 
     def _load(self):
         if self._items is not None:
             return
         _bind_ghidra_globals_from_caller()
+        if self.max_functions is _AUTO_CAP:
+            self.max_functions, self._cap_source = _resolve_auto_cap("functions")
+            warn("[FunctionIndex] max_functions=%d source=%s" %
+                 (self.max_functions, self._cap_source))
         items = []
         truncated = False
         try:
