@@ -1,0 +1,30 @@
+--- a/ghidra_headless_mcp/backend.py
++++ b/ghidra_headless_mcp/backend.py
+@@ -129,6 +129,15 @@
+         binary_path = Path(path)
+         if not binary_path.exists():
+             raise GhidraBackendError(f"path does not exist: {path}")
++        # Universal Mach-O gate (SHAKEDOWN #35). Ghidra's loader picks one slice
++        # silently when the input is a fat Mach-O; the caller has no signal that
++        # the other slices weren't scanned. Refuse loudly and instruct the
++        # caller to pre-slice. Magic 0xCAFEBABE (32-bit fat) / 0xCAFEBABF (64-bit
++        # fat) in big-endian on disk. Same heuristic `lipo -info` uses.
++        with binary_path.open("rb") as _fh:
++            _fat_magic = _fh.read(4)
++        if _fat_magic in (b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):
++            raise GhidraBackendError(f"path is a universal Mach-O: {path} — pre-slice with `lipo -thin <arch> {path} <out>` and pass the slice path; or use scripts/ghidra-scan.sh which auto-iterates slices")
+
+         project_root, effective_project_name, managed_project = self._allocate_project(
+             binary_path.name,
+@@ -187,6 +196,11 @@
+             raw_bytes = base64.b64decode(data_base64, validate=True)
+         except (ValueError, binascii.Error) as exc:
+             raise GhidraBackendError(f"invalid base64 data: {exc}") from exc
++        # Universal Mach-O gate (SHAKEDOWN #35). Mirror of the session_open
++        # check; same magic constants. raw_bytes may be empty in degenerate
++        # cases, so guard the slice.
++        if raw_bytes[:4] in (b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf"):
++            raise GhidraBackendError("data_base64 contains a universal Mach-O — pre-slice with `lipo -thin <arch>` and re-encode the slice; or write the bytes to a file and use scripts/ghidra-scan.sh which auto-iterates slices")
+
+         effective_program_name = program_name or filename or "session.bin"
+         project_root, effective_project_name, managed_project = self._allocate_project(
