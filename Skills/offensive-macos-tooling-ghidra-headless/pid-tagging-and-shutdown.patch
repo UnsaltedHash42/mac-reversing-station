@@ -1,0 +1,143 @@
+diff --git a/ghidra_headless_mcp/backend.py b/ghidra_headless_mcp/backend.py
+index cbf27bb..b4a8e7d 100644
+--- a/ghidra_headless_mcp/backend.py
++++ b/ghidra_headless_mcp/backend.py
+@@ -2,6 +2,7 @@
+ 
+ from __future__ import annotations
+ 
++import atexit
+ import base64
+ import binascii
+ import io
+@@ -9,6 +10,7 @@ import json
+ import os
+ import re
+ import shutil
++import signal
+ import sys
+ import tempfile
+ import threading
+@@ -92,6 +94,16 @@ class GhidraBackend:
+         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ghidra_headless_mcp")
+         self._started = False
+         self._launcher: Any = None
++        # Sidecar PID file that lab-health.sh reads to identify zombie vs live
++        # MCP processes and cross-reference held Ghidra project locks. Closes
++        # SHAKEDOWN_NOTES.md items #24/#25.
++        self._sidecar_dir = Path.home() / ".ghidra-headless-mcp" / "sessions"
++        self._sidecar_path = self._sidecar_dir / f"{os.getpid()}.json"
++        self._sidecar_started_at = time.time()
++        self._shutdown_called = False
++        self._claude_session_id = os.environ.get("CLAUDE_CODE_SESSION_ID")
++        self._write_sidecar()
++        atexit.register(self.shutdown)
+ 
+     def ping(self) -> dict[str, str]:
+         return {"status": "ok", "message": "pong"}
+@@ -343,6 +355,7 @@ class GhidraBackend:
+         if record.managed_project_root and not project_still_in_use:
+             shutil.rmtree(record.managed_project_root, ignore_errors=True)
+ 
++        self._write_sidecar()
+         return {"closed": True, "session_id": session_id}
+ 
+     def session_list(self) -> dict[str, Any]:
+@@ -5692,6 +5705,7 @@ class GhidraBackend:
+             temp_source_path=temp_source_path,
+             program_consumer=program_consumer,
+         )
++        self._write_sidecar()
+         return session_id
+ 
+     def _get_record(self, session_id: str) -> SessionRecord:
+@@ -7119,3 +7133,73 @@ class GhidraBackend:
+             with suppress(Exception):
+                 return [self._to_jsonable(item) for item in value]
+         return str(value)
++
++    # ------------------------------------------------------------------
++    # Lifecycle / lab-health integration (SHAKEDOWN_NOTES.md #24/#25).
++    #
++    # The PASS-001 stop condition was: a prior session crashed leaving its
++    # ghidra-headless-mcp subprocess holding an exclusive .lock on a Ghidra
++    # project; the next session couldn't open the project and `ps` couldn't
++    # tell zombie from live MCP. shutdown() cleanly closes every session
++    # (releasing each project lock) on SIGTERM/SIGINT/atexit, and the
++    # sidecar gives lab-health.sh a structured view of which PID holds
++    # which project + lockfile.
++    # ------------------------------------------------------------------
++
++    def _write_sidecar(self) -> None:
++        try:
++            self._sidecar_dir.mkdir(parents=True, exist_ok=True)
++            payload = {
++                "pid": os.getpid(),
++                "started_at": self._sidecar_started_at,
++                "claude_code_session_id": self._claude_session_id,
++                "ghidra_install_dir": self._install_dir,
++                "open_projects": [
++                    {
++                        "session_id": rec.session_id,
++                        "project_location": rec.project_location,
++                        "project_name": rec.project_name,
++                        "lockfile": str(
++                            Path(rec.project_location) / f"{rec.project_name}.lock"
++                        ),
++                        "program_name": rec.program_name,
++                    }
++                    for rec in self._sessions.values()
++                ],
++            }
++            tmp = self._sidecar_path.with_suffix(".json.tmp")
++            tmp.write_text(json.dumps(payload, indent=2))
++            tmp.replace(self._sidecar_path)
++        except Exception:
++            # Sidecar is advisory; never let a write failure kill the backend.
++            pass
++
++    def _remove_sidecar(self) -> None:
++        with suppress(FileNotFoundError, OSError):
++            self._sidecar_path.unlink()
++
++    def shutdown(self) -> None:
++        if self._shutdown_called:
++            return
++        self._shutdown_called = True
++        for session_id in list(self._sessions):
++            with suppress(Exception):
++                self.session_close(session_id)
++        with suppress(Exception):
++            self._executor.shutdown(wait=False)
++        self._remove_sidecar()
++
++    def _install_signal_handlers(self) -> None:
++        """Wire SIGTERM/SIGINT to shutdown(). Call once from the entry point."""
++
++        def _handler(signum, _frame):
++            try:
++                self.shutdown()
++            finally:
++                # Re-raise default behavior so the process actually exits.
++                signal.signal(signum, signal.SIG_DFL)
++                os.kill(os.getpid(), signum)
++
++        for sig in (signal.SIGTERM, signal.SIGINT):
++            with suppress(ValueError, OSError):
++                signal.signal(sig, _handler)
+diff --git a/ghidra_headless_mcp/cli.py b/ghidra_headless_mcp/cli.py
+index cf764fa..12b4137 100644
+--- a/ghidra_headless_mcp/cli.py
++++ b/ghidra_headless_mcp/cli.py
+@@ -83,6 +83,11 @@ def main(argv: list[str] | None = None) -> int:
+     args = parser.parse_args(argv)
+ 
+     backend = build_backend(args)
++    # Wire signal handlers + sidecar cleanup so a crashed/SIGTERM'd MCP
++    # releases Ghidra project locks instead of leaving them stale.
++    install = getattr(backend, "_install_signal_handlers", None)
++    if callable(install):
++        install()
+     server = SimpleMcpServer(backend)
+ 
+     if args.transport == "tcp":
