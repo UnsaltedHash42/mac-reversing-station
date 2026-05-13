@@ -103,6 +103,17 @@ Confirm exact tool schemas with `tools/list` because the MCP server is pinned so
 - Media and parser attack surfaces where decompilation plus string/xref sweeps separate reachable code from dead exports.
 - Logic bugs where platform or configuration branches flip a security decision. The Catalyst/defaults hunt scripts are shaped for this class.
 
+## Mutability Semantics — `read_only` and `update_analysis`
+
+Verified empirically against pinned `b9c491a` (probe in SHAKEDOWN #8, 2026-05-13):
+
+- `read_only=true` is **session-level**, not DB-level. The backend stores it on the session record and `_require_writable_session` raises `session <id> is read-only` before any mutation tool (`function.rename`, `decomp.global_rename`, etc.) reaches the program. So `read_only=true` actively blocks mutations from the MCP — it is not a misleading no-op.
+- `update_analysis=true` is independent of `read_only`. Analysis runs inside its own Ghidra transaction with `endTransaction(tx_id, True)`, which **persists analysis output (function table, thunk signatures, applied data archives) into the project DB on disk regardless of `read_only`**.
+- After a `program.open(read_only=true, update_analysis=true)` followed by `program.close`, reopening the same project + program with `read_only=true, update_analysis=false` returns the analysis-applied function table — no re-analysis, no extra `program.save`. The DB carries it.
+- `program.save` is **not** gated by `read_only` (it returns `saved:true` from a read-only session). Cosmetic inconsistency; it doesn't change the persistence story for the documented Workflow A.
+
+Practical implication: the documented `read_only=true, update_analysis=true` combo on first open is exactly right for "analyze once, browse cheaply many times." If a session also needs to rename or retype, pass `read_only=false` on that one session — the `read_only` block is enforced on *mutation*, not on *open*.
+
 ## Pitfalls
 
 - First analysis can be slow. Reuse the `session_id`; do not reopen per function.
