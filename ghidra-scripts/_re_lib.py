@@ -832,6 +832,7 @@ def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
         # Build a quick selector -> spec map.
         wanted = {s.selector: s for s in selector_specs}
         per_selector_count = {s.selector: 0 for s in selector_specs}
+        total_processed = 0
 
         for msgsend_name in ("_objc_msgSend", "objc_msgSend",
                              "_objc_msgSendSuper2", "objc_msgSendSuper2",
@@ -842,6 +843,11 @@ def enrich_objc_msgsend(writer, selector_specs, decomp_cache=None,
             for caller, site in callers_of(fn):
                 if caller is None:
                     continue
+                total_processed += 1
+                if total_processed % HEARTBEAT_EVERY == 0:
+                    selector_hits = sum(per_selector_count.values())
+                    warn("[enrich_objc_msgsend] processed=%d msgsend=%s hits=%d" %
+                         (total_processed, msgsend_name, selector_hits))
                 sel = recover_objc_selector(decomp, site) if decomp else None
                 if not sel:
                     continue
@@ -890,6 +896,10 @@ class APISpec(object):
 
 DEFAULT_MAX_PER_API = int(os.environ.get("MACRE_MAX_PER_API", "64"))
 
+# Emit a stderr heartbeat every N callsites in enrich phases. Visible to
+# ghidra-watch.sh and to operators tailing stderr during long scans.
+HEARTBEAT_EVERY = int(os.environ.get("MACRE_HEARTBEAT_EVERY", "100"))
+
 
 def enrich_callsite_args(writer, api_specs, decomp_cache=None,
                          max_per_api=DEFAULT_MAX_PER_API):
@@ -911,6 +921,7 @@ def enrich_callsite_args(writer, api_specs, decomp_cache=None,
     try:
         decomp_iface = decomp_cache.open()
         counts = {}
+        total_processed = 0
         for spec in api_specs:
             fn = find_external(spec.name)
             if fn is None:
@@ -923,6 +934,10 @@ def enrich_callsite_args(writer, api_specs, decomp_cache=None,
                     break
                 if caller is None:
                     continue
+                total_processed += 1
+                if total_processed % HEARTBEAT_EVERY == 0:
+                    warn("[enrich_callsite_args] processed=%d api=%s hits=%d" %
+                         (total_processed, spec.name, count))
                 evidence = "api=%s; site=%s" % (spec.name, format_addr(site))
                 if spec.recover_kind == "string":
                     val = None
