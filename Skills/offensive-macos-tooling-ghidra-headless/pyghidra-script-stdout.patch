@@ -1,0 +1,37 @@
+--- a/ghidra_headless_mcp/backend.py
++++ b/ghidra_headless_mcp/backend.py
+@@ -3131,17 +3131,26 @@
+             raise GhidraBackendError("session_id is required")
+         record = self._get_record(session_id)
+         transitioned_session_ids = self._transition_sessions_to_writable([session_id])
++        # PyGhidra wraps print/println only in the script's globals dict, so output
++        # from imported modules (e.g. _re_lib.emit) bypasses the Java ScriptControls
++        # capture and writes to the real Python sys.stdout. Wrap the call in
++        # redirect_stdout/redirect_stderr to capture those too, then merge.
++        py_stdout_buf = io.StringIO()
++        py_stderr_buf = io.StringIO()
+         try:
+-            stdout_text, stderr_text = self._pyghidra.ghidra_script(
+-                path,
+-                record.project.getProject(),
+-                record.program,
+-                script_args=script_args or [],
+-                echo_stdout=False,
+-                echo_stderr=False,
+-            )
++            with redirect_stdout(py_stdout_buf), redirect_stderr(py_stderr_buf):
++                stdout_text, stderr_text = self._pyghidra.ghidra_script(
++                    path,
++                    record.project.getProject(),
++                    record.program,
++                    script_args=script_args or [],
++                    echo_stdout=False,
++                    echo_stderr=False,
++                )
+         except Exception as exc:
+             raise GhidraBackendError(f"failed to run Ghidra script: {exc}") from exc
++        stdout_text = (stdout_text or "") + py_stdout_buf.getvalue()
++        stderr_text = (stderr_text or "") + py_stderr_buf.getvalue()
+         payload: dict[str, Any] = {
+             "path": path,
+             "session_id": session_id,
