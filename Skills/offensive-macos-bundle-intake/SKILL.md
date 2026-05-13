@@ -53,16 +53,37 @@ trigger_phrases:
    - identify bundle metadata, main executable, helpers, XPC services, launchd plists, updater components, entitlements, code-signing flags, and privacy strings;
    - write a target map and dossier under `findings/analysis/`;
    - update `CORPUS.md` target inventory, discovered components, surface classification, Watch decision support, family labels, Scriptorium anchors, and worklist sections.
-6. Classify from inventory first. Assign one or more family labels, or `unknown/mixed` when the surfaces do not clearly match a built-in family.
-7. Use Watch recommendations and `docs/playbooks/investigation-recipes.md` to propose the first static sweep and expected evidence. Do not run dynamic tests until `LAB_SAFETY.md` identifies the host, user, snapshot/rollback, and allowed test shape.
-8. When Ghidra or dynamic tooling needs the lab-host copy, sync and record the mapping:
+6. **Derive trigger signals from entitlement values, not just family labels** (see "Entitlement Trigger Signals" below). PASS-001 missed `application-groups = S6UPZG7ZR3.chat.rocket` as a keychain-confused-deputy signal because the intake recipe only routed off family labels. The trigger table below routes specific entitlement values to the hunt skills they imply; record each match in `CORPUS.md` under "Trigger signals" so `offensive-macos-vuln-ontology` reads them when generating hypotheses.
+7. Classify from inventory first. Assign one or more family labels, or `unknown/mixed` when the surfaces do not clearly match a built-in family.
+8. Use Watch recommendations and `docs/playbooks/investigation-recipes.md` to propose the first static sweep and expected evidence. Do not run dynamic tests until `LAB_SAFETY.md` identifies the host, user, snapshot/rollback, and allowed test shape.
+9. When Ghidra or dynamic tooling needs the lab-host copy, sync and record the mapping:
 
    ```bash
    MACRE_MACHINE=<lab-host> MACRE_REMOTE_TARGETS=/Users/<remote-user>/Targets bash scripts/rsync-to-vm.sh --record <target-id> targets/
    ```
 
-9. Use the recorded `CORPUS.md` `Lab Host Path Mapping` row for later Ghidra prompts.
-10. Update `HANDOFF.md` with the target map path, selected family labels, next artifact, and any blocker.
+10. Use the recorded `CORPUS.md` `Lab Host Path Mapping` row for later Ghidra prompts.
+11. Update `HANDOFF.md` with the target map path, selected family labels, next artifact, and any blocker.
+
+## Entitlement Trigger Signals
+
+Map specific entitlement keys (or values) to the hunt skill or scanner
+they imply. Record each match in `CORPUS.md` under a `Trigger signals`
+section so the ontology layer reads them when generating hypotheses.
+
+| Entitlement | Triggers | Why |
+|---|---|---|
+| `com.apple.security.application-groups` (any value) | `offensive-macos-hunt-keychain-access-group` | Application-group identifiers are also valid keychain access-group identifiers. If credentials are stored under the group with ACLs that don't pin to a code-signing identity, any other app signed by the same team reads them. Classic confused-deputy. |
+| `com.apple.security.automation.apple-events` | `offensive-macos-hunt-url-scheme-hijack` (companion check) + AppleScript-target audit | App can send AppleEvents to control other apps. An IPC handler that takes an AppleEvent target from the renderer or a URL handler is a renderer→arbitrary-app-control pivot. |
+| `com.apple.developer.endpoint-security.client` | `offensive-macos-family-enterprise-agents` | EDR-class surface; daemon runs as root with a kernel callback; entirely different review shape. |
+| `com.apple.security.cs.allow-unsigned-executable-memory` | `offensive-macos-shellcode-arm64` (signal, not skill) | Unsigned executable memory == JIT or runtime patching. Search for `mmap` / `mprotect` with `PROT_EXEC` and identify the JIT region's protection lifecycle. |
+| `com.apple.security.cs.disable-library-validation` | `offensive-macos-hunt-private-framework-hijack` | Library validation off means a tampered or substituted dylib loads without rejection. Combine with rpath / weak-link audit. |
+| `com.apple.private.security.no-sandbox` | `offensive-macos-family-os-components` | Apple-signed binary opting out of sandbox. Review attack surface as if it had no boundary. |
+| `com.apple.private.tcc.allow-prompting` (any) | `offensive-macos-hunt-tcc-prompt-attribution` | App takes part in TCC prompt routing; check responsible-process accounting. |
+
+Add new rows when a new pass surfaces a new entitlement-to-skill mapping.
+A row should only land here when at least one real target's entitlement
+value would fire it — speculative entries dilute the signal.
 
 ## Output Shape
 
