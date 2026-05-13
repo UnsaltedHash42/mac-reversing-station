@@ -47,6 +47,7 @@
 #   5  disk-preflight tripwire (override with MACRE_SKIP_DISK_PREFLIGHT=1)
 #   6  heap-vs-RAM preflight tripwire (override with MACRE_SKIP_RAM_PREFLIGHT=1)
 #   7  lipo failure on a universal binary (slice extraction)
+#   8  pyghidra-preflight tripwire (override with MACRE_SKIP_PYGHIDRA_PREFLIGHT=1)
 # When the input is universal, the exit code is the worst of the per-slice
 # scan rcs (0 only if all slices succeeded). Slice rcs are also surfaced in
 # the trailer line so the operator can see which slice failed.
@@ -157,6 +158,22 @@ for p in "$GHIDRA_HOME/support/analyzeHeadless" "$LAUNCHER" "$VENV_PY"; do
         echo "missing: $p" >&2; exit 4
     fi
 done
+
+# PyGhidra preflight. PASS-001 hit "Ghidra was not started with PyGhidra. Python
+# is not available" until we figured out pyghidra_launcher.py -H with the MCP
+# venv's Python is the required entry point. The path-existence check above
+# only proves the files are there; a venv re-created without re-pip-install
+# will pass that check and still fail at script runtime. Probe by importing
+# pyghidra from the venv Python — cheap (~50 ms), source-of-truth.
+# Override via MACRE_SKIP_PYGHIDRA_PREFLIGHT=1.
+if [[ -z "${MACRE_SKIP_PYGHIDRA_PREFLIGHT:-}" ]]; then
+    if ! "$VENV_PY" -c 'import pyghidra' >/dev/null 2>&1; then
+        printf 'ERROR: %s cannot import pyghidra\n' "$VENV_PY" >&2
+        printf '  fix with: uv pip install --python %s pyghidra (or rerun scripts/install-ghidra-host.sh --install)\n' "$VENV_PY" >&2
+        printf '  override with MACRE_SKIP_PYGHIDRA_PREFLIGHT=1\n' >&2
+        exit 8
+    fi
+fi
 
 export JAVA_HOME="$JDK_HOME"
 export PATH="$JAVA_HOME/bin:$PATH"
