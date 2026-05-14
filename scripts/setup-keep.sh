@@ -18,6 +18,7 @@ WRITE_MCP=1
 WRITE_CURSOR=1
 WRITE_CLAUDE_CODE=1
 RUN_LIVE_SMOKE=0
+INSTALL_DISPOSABLE_SUDOERS=0
 
 usage() {
     cat <<'USAGE'
@@ -38,6 +39,11 @@ Options:
   --cursor-only              Only write Cursor config (skip Claude Code)
   --claude-code-only         Only write Claude Code config (skip Cursor)
   --live-smoke               Run live lab-host smoke checks after setup
+  --lab-disposable           Install /etc/sudoers.d/lab-nopasswd-<user> on the
+                             lab host so ssh-driven sudo runs without prompts
+                             (pkg installer, launchctl load, codesign edits).
+                             Only safe on hosts you've declared lab_disposable:
+                             true in LAB_SAFETY.md. Requires --vm-password.
   -h, --help                 Show this help
 
 Environment equivalents:
@@ -69,6 +75,8 @@ while [[ $# -gt 0 ]]; do
             WRITE_CURSOR=0; shift ;;
         --live-smoke)
             RUN_LIVE_SMOKE=1; shift ;;
+        --lab-disposable)
+            INSTALL_DISPOSABLE_SUDOERS=1; shift ;;
         -h|--help)
             usage; exit 0 ;;
         *)
@@ -132,6 +140,15 @@ fi
 if [[ "${INSTALL_DYNAMIC}" -eq 1 ]]; then
     section "Deploy macre-vm-mcp"
     bash "${ROOT}/scripts/deploy-macre-vm-mcp.sh"
+fi
+
+if [[ "${INSTALL_DISPOSABLE_SUDOERS}" -eq 1 ]]; then
+    section "Install NOPASSWD sudoers fragment (disposable lab only)"
+    if [[ -z "${VM_PASSWORD}" ]]; then
+        echo "ERROR: --lab-disposable requires --vm-password (lab user account password)." >&2
+        exit 2
+    fi
+    bash "${ROOT}/scripts/install-disposable-sudoers.sh" "${VM_PASSWORD}"
 fi
 
 if [[ "${WRITE_MCP}" -eq 1 && "${WRITE_CURSOR}" -eq 1 ]]; then

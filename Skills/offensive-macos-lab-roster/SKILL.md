@@ -130,6 +130,91 @@ budget is tight.
 - `class-dump`, `jtool2`, `otool`, `nm`, `codesign`, `plutil`, and `log` are available or documented as missing.
 - Hopper may remain installed for human GUI depth work, but Cursor routes static analysis through `ghidra-mcp`.
 
+## Disposable Lab Sudo Policy
+
+`pkg` installs, `launchctl load`, `codesign --remove-signature`, helper
+restart, and similar steps fail with `sudo: a terminal is required to
+read the password` when the agent drives them through non-interactive
+ssh. Operator workaround (manual sudo every time) is fine for one-shot
+work but compounds into a real cost across many dynamic actions during
+a pass — Adobe PASS-002 hit this on `installer -pkg -target /` during
+intake and the cost recurred on every helper-restart cycle.
+
+The opt-in fix: install a sudoers fragment that grants the lab user
+NOPASSWD: ALL. The fragment is dropped at
+`/etc/sudoers.d/lab-nopasswd-<user>`, owned `root:wheel`, mode `0440`,
+validated with `visudo -cf` before atomic install.
+
+This is **only** appropriate on hosts where:
+
+- `LAB_SAFETY.md` declares `lab_disposable: true`.
+- The host holds no real data (no Apple ID, no personal keychain, no
+  customer artifacts).
+- Operator has accepted that the lab user is effectively root from any
+  ssh session that holds the workstation key.
+- Snapshot rollback is the recovery mechanism, not credential rotation.
+
+It is **not** appropriate on:
+
+- The workstation. Workstation-side sudo stays interactive.
+- Any non-disposable host. Use askpass or operator-driven sudo there.
+- A shared lab VM where multiple operators land. Per-operator fragments
+  (one per user) are tolerable; broad `ALL=(ALL) NOPASSWD: ALL` for a
+  shared account is not.
+
+### Install
+
+Opt-in flag on `setup-keep.sh`:
+
+```bash
+scripts/setup-keep.sh --host <lab-host> --remote-home /Users/<user> \
+    --vm-password '<user-password>' \
+    --lab-disposable
+```
+
+Or directly, after key auth is in place:
+
+```bash
+MACRE_MACHINE=<lab-host> scripts/install-disposable-sudoers.sh '<user-password>'
+```
+
+The script is idempotent: a host where `sudo -n true` already succeeds
+is a no-op. The `--vm-password` is reused once via `expect` to drive
+the initial `sudo -S install` call; after that single use, every
+ssh-driven `sudo -n` runs without prompts.
+
+### Revoke
+
+```bash
+ssh <lab-host> sudo rm /etc/sudoers.d/lab-nopasswd-<user>
+```
+
+A snapshot rollback that predates install also revokes it. The fragment
+is the only persistent state — no agents, no daemons, no listeners are
+added by the policy.
+
+### Why a sudoers fragment instead of an askpass helper
+
+`SUDO_ASKPASS` would let the workstation hand the cached VM password to
+each ssh-driven sudo call without granting standing NOPASSWD. It's the
+less invasive option. The reasons NOPASSWD won out for disposable lab
+work:
+
+1. The workstation already holds the lab user's password (it had to,
+   to install the ssh key in the first place). Caching it again in an
+   askpass helper duplicates a credential we already have, without
+   reducing the trust boundary.
+2. The trust boundary is already "any process on the workstation that
+   reads the ssh key can sudo on the lab host." NOPASSWD makes that
+   explicit instead of hiding it behind a per-call password handoff.
+3. Snapshot rollback is the lab's recovery mechanism. A disposable VM
+   that gets compromised through this policy is the same disposable VM
+   that would get rolled back regardless of policy.
+
+For non-disposable hosts where these arguments don't hold, use askpass
+or operator-driven sudo. This skill's guidance applies only to hosts
+the operator has explicitly declared disposable.
+
 ## SIP Guidance
 
 - SIP off is acceptable on primary if the operator accepts the compromise and fidelity tradeoff.
