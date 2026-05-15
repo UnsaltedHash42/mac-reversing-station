@@ -30,7 +30,9 @@ tutorial-target-2/
 
 ## Usage
 
-1. Build: `./build.sh` (requires clang + codesign; ad-hoc signed, no developer identity).
+**Default (course):** use the committed `PluginHost.app` as-is after `git clone` — **no compile step**.
+
+1. *(Optional)* Rebuild: `./build.sh` (requires clang + codesign; ad-hoc signed, no developer identity). Only needed if you edited source, the bundle is missing, or you need a non-arm64 slice.
 2. Sync the bundle (the directory, not just the host binary) to the lab host: `MACRE_MACHINE=<host> MACRE_REMOTE_TARGETS=/Users/<remote-user>/Targets bash ../../scripts/rsync-to-vm.sh --record pluginhost PluginHost.app` (intake will derive the slug `pluginhost` from the bundle name).
 3. Run intake against `PluginHost.app` from a per-target project clone: `python3 scripts/start-target.py templates/tutorial-target-2/PluginHost.app --pass-id PASS-NNN`.
 
