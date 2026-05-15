@@ -92,18 +92,18 @@ Triage state: **escalated**.
 Reasoning: authorization bypass. Even if C-001 didn't exist, a caller
 that reaches the privileged handler could bypass the gate.
 
-### C-003: un-gated file write on internal service
+### C-003: un-gated InternalOps (write + delete)
 
-`writeAuditLog:` writes caller-controlled content to
-`/var/log/tutorial-daemon-audit.log` with no authentication. If the daemon
-runs as root (as the launchd plist implies), this is an arbitrary-content
-write to a privileged path.
+`InternalHandler` has no caller validation:
 
-Triage state: **escalated**.
-Reasoning: combined with C-001, any unprivileged process can write to a
-root-owned log file. The path is fixed, but the content is attacker-controlled
-— usable for log injection or, depending on log-consumer behavior, code
-execution.
+- `writeAuditLog:` appends attacker content to `/var/log/tutorial-daemon-audit.log`.
+- `resetCacheAtPath:` is `removeItemAtPath:` on an attacker-supplied path — **arbitrary file delete as root** once reached through C-001.
+
+Triage state: **escalated** (severity **critical** for the class chain).
+Reasoning: combined with C-001, any process that can open either MachService
+gets `InternalOps`. `writeAuditLog:` proves reachability; `resetCacheAtPath:`
+is the impact primitive for exploitation demos (e.g. delete a root-owned
+sentinel under `/tmp/`).
 
 ### Red herring: com.apple.private.tcc.allow entitlement
 
@@ -152,17 +152,31 @@ Update `INDEX.md`:
 |-------|----------|------------------------------|------------------------------------------|
 | C-001 | escalated | wrong-door / shared-delegate | No listener branching; both ports identical |
 | C-002 | escalated | authorization-bypass         | methodID 0 skips entitlement check       |
-| C-003 | escalated | un-gated-write               | Arbitrary log content from any process   |
+| C-003 | escalated | un-gated-write               | writeAuditLog + resetCacheAtPath (root delete) |
 | C-004 | closed   | n/a (red herring)            | Private TCC entitlement inert without Apple sig |
 
-The real finding to report is C-001 + C-003 combined: any unprivileged
-process can write attacker-controlled content to a root-owned path via
-the "internal" service, reachable from either MachService name.
+The real finding to report is C-001 + C-003 combined: any caller that reaches
+`InternalOps` can delete arbitrary paths as root via `resetCacheAtPath:`
+(wrong door on either MachService). `writeAuditLog:` proves unprivileged
+reachability.
 
 C-002 is a separate class (authorization bypass) that compounds the issue
 if the privileged handler is ever reached.
 
-## Step 6: PoC sketch
+## Step 6: Unprivileged reachability PoC
+
+Connect to `com.tutorial.daemon.internal` with **no**
+`NSXPCConnectionPrivileged` flag and call `writeAuditLog:` — proves UID 501
+reachability without `sudo`.
+
+## Step 7: Chain — root file delete
+
+Connect to either Mach name (internal recommended for unprivileged callers),
+call `resetCacheAtPath:` on a root-owned sentinel you planted (e.g.
+`/tmp/tutorial-chain-sentinel`), verify the lab user could not delete it and
+the XPC call removed it.
+
+## Appendix: writeAuditLog PoC snippet
 
 A minimal PoC connects to `com.tutorial.daemon.internal` (or `.privileged`,
 since the delegate doesn't care) and calls `writeAuditLog:` with a crafted
@@ -201,7 +215,7 @@ int main(void) {
 1. **Scan selectivity.** The scans surface multiple signals; you triage them, not the tool.
 2. **Closure discipline.** The TCC entitlement looks alarming but is inert. Closing it with rationale is as important as escalating the real bugs.
 3. **Composition.** C-001 alone is a design flaw. C-003 alone is a missing auth check. Together they're an exploitable privilege boundary violation.
-4. **The workflow.** Intake → scan → triage → confirm → close/escalate → PoC sketch. Every step produces a durable artifact.
+4. **The workflow.** Intake → scan → triage → confirm → close/escalate → unprivileged PoC → chain to root impact. Every step produces a durable artifact.
 
 ## Next steps after the tutorial
 
